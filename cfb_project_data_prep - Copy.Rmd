@@ -120,9 +120,9 @@ week_id = game_info %>% select(game_id, week) %>% rename(new_week = week)
 #cfb_data_orig = load_cfb_pbp(seasons = c(2014:2024)) #original df
 cfb_data_reg_orig = load_cfb_pbp(seasons = 2024) #original df
 #cfb_data_reg_orig = read.csv("cfb_data_orig.csv")
-cfb_data_reg_old = cfb_data_reg_orig %>% filter(year != current_season)
-cfb_data_reg_new = load_cfb_pbp(seasons = c(current_season:current_season))
-cfb_data_reg = bind_rows(cfb_data_reg_old, cfb_data_reg_new)
+#cfb_data_reg_old = cfb_data_reg_orig %>% filter(year != current_season)
+#cfb_data_reg_new = load_cfb_pbp(seasons = c(current_season:current_season))
+cfb_data_reg = cfb_data_reg_orig
 
 
 
@@ -147,15 +147,15 @@ load_post_data_func = function(year_start, year_end) {
 # load in postseason pbp data
 cfb_data_post_orig = load_post_data_func(2024, 2024)
 #cfb_data_post_orig = read.csv("cfb_data_post_orig.csv")
-cfb_data_post_old = cfb_data_post_orig %>% filter(season != current_season)
-cfb_data_post_new = load_post_data_func(2024, 2024)
-cfb_data_post_new$id_play = as.integer(cfb_data_post_new$id_play)
-cfb_data_post_new$half = as.integer(cfb_data_post_new$half)
-cfb_data_post_new$down_end = as.integer(cfb_data_post_new$down_end)
-cfb_data_post_new$ppa = as.integer(cfb_data_post_new$ppa)
-cfb_data_post_new$id_drive = as.integer(cfb_data_post_new$id_drive)
+# cfb_data_post_old = cfb_data_post_orig %>% filter(season != current_season)
+# cfb_data_post_new = load_post_data_func(2024, 2024)
+# cfb_data_post_new$id_play = as.integer(cfb_data_post_new$id_play)
+# cfb_data_post_new$half = as.integer(cfb_data_post_new$half)
+# cfb_data_post_new$down_end = as.integer(cfb_data_post_new$down_end)
+# cfb_data_post_new$ppa = as.integer(cfb_data_post_new$ppa)
+# cfb_data_post_new$id_drive = as.integer(cfb_data_post_new$id_drive)
 #cfb_data_post = bind_rows(cfb_data_post_old, cfb_data_post_new) %>% 
-cfb_data_post = cfb_data_post_new %>% 
+cfb_data_post = cfb_data_post_orig %>% 
   rename(week = wk,
          year = season)
 cfb_data_post = left_join(cfb_data_post, week_id, by = "game_id")
@@ -165,7 +165,7 @@ cfb_data_post = cfb_data_post %>% select(-c(new_week))
 
 
 # join regular and postseason data
-common_cols <- intersect(names(cfb_data_orig), names(cfb_data_post))
+common_cols <- intersect(names(cfb_data_reg_orig), names(cfb_data_post))
 cfb_data_post <- cfb_data_post %>% select(all_of(common_cols))
 cfb_data_post$id_play = as.integer(cfb_data_post$id_play)
 cfb_data_post$half = as.integer(cfb_data_post$half)
@@ -1312,8 +1312,13 @@ home_df = game_data %>%
          t2_moneyline = away_moneyline,
          t2_talent = away_talent,
          t2_rank_tier = rank_tier_away,
-         t2_elo = away_pregame_elo,) %>% 
-  mutate(t1_home = 1) %>% 
+         t2_elo = away_pregame_elo) %>% 
+  mutate(t1_home = 1,
+         t2_home = 0,
+         t1_serv_acad = ifelse(t1_team %in% c("Army", "Navy", "Air Force"), 1, 0),
+         t2_serv_acad = ifelse(t2_team %in% c("Army", "Navy", "Air Force"), 1, 0)) %>% 
+  mutate(t1_talent = ifelse(t1_serv_acad == 1, 0, t1_talent),
+         t2_talent = ifelse(t2_serv_acad == 1, 0, t2_talent)) %>% 
   arrange(t1_team, season, week) %>% # sort before lag calc
   group_by(t1_team, season) %>% # group before lag calc
   
@@ -1409,6 +1414,7 @@ away_df = home_df %>%
          t2_talent = t1_talent,
          t2_rank_tier = t1_rank_tier,
          t2_elo = t1_elo,
+         t2_serv_acad = t1_serv_acad,
          t1_team = t2_team,
          t1_conference = t2_conference,
          t1_division = t2_division,
@@ -1419,6 +1425,7 @@ away_df = home_df %>%
          t1_talent = t2_talent,
          t1_rank_tier = t2_rank_tier,
          t1_elo = t2_elo,
+         t1_serv_acad = t2_serv_acad,
          t1_rol_record_ha_l20 = t2_rol_record_ha_l20,
          t1_rol_pf_pg_ha_l20 = t2_rol_pf_pg_ha_l20,
          t1_rol_pa_pg_ha_l20 = t2_rol_pa_pg_ha_l20,
@@ -1426,6 +1433,7 @@ away_df = home_df %>%
          t2_rol_pf_pg_ha_l20 = t1_rol_pf_pg_ha_l20,
          t2_rol_pa_pg_ha_l20 = t1_rol_pa_pg_ha_l20) %>% 
   mutate(t1_home = 0,
+         t2_home = 1,
          t1_book_spread = t1_book_spread * -1) 
 
 
@@ -1500,7 +1508,62 @@ t1_game_info_metrics= rbind(home_df, away_df) %>%
                                            partial = TRUE, align = 'right')) %>% 
   
   select(-c(lag_win, lag_loss, rol_win_l3, rol_loss_l3, rol_win_l20, rol_loss_l20, lag_pf, 
-            lag_pa, lag_game, t2_win)) # get rid of useless cols
+            lag_pa, lag_game, t2_win)) %>% 
+  
+  
+  
+  
+  
+  
+  # create SoS rolling avgs
+  mutate(lag_opp_rk = ifelse(is.na(lag(t2_rank_tier)), 0, lag(t2_rank_tier)),
+         lag_opp_elo = ifelse(is.na(lag(t2_elo)), 0, lag(t2_elo)),
+         lag_opp_talent = ifelse(is.na(lag(t2_talent)), 0, lag(t2_talent)),
+         lag_game_rk = ifelse(is.na(lag(t2_rank_tier)), 0, 1),
+         lag_game_elo = ifelse(is.na(lag(t2_elo)), 0, 1),
+         lag_game_talent = ifelse(is.na(lag(t2_talent)), 0, 1)) %>% 
+  
+  
+  # 
+  mutate(t1_rol_opp_rk_l3 :=  rollapplyr(lag_opp_rk, width = 3, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right') /
+                        rollapplyr(lag_game_rk, width = 3, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right'),
+         t1_rol_opp_elo_l3 :=  rollapplyr(lag_opp_elo, width = 3, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right') /
+                        rollapplyr(lag_game_elo, width = 3, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right'),
+         t1_rol_opp_talent_l3 :=  rollapplyr(lag_opp_talent, width = 3, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right') /
+                        rollapplyr(lag_game_talent, width = 3, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right'),
+         t1_rol_opp_rk_l1 :=  rollapplyr(lag_opp_rk, width = 1, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right') /
+                        rollapplyr(lag_game_rk, width = 1, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right'),
+         t1_rol_opp_elo_l1 :=  rollapplyr(lag_opp_elo, width = 1, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right') /
+                        rollapplyr(lag_game_elo, width = 1, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right'),
+         t1_rol_opp_talent_l1 :=  rollapplyr(lag_opp_talent, width = 1, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right') /
+                        rollapplyr(lag_game_talent, width = 1, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right'),
+         t1_rol_opp_rk_l20 :=  rollapplyr(lag_opp_rk, width = 20, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right') /
+                        rollapplyr(lag_game_rk, width = 20, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right'),
+         t1_rol_opp_elo_l20 :=  rollapplyr(lag_opp_elo, width = 20, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right') /
+                        rollapplyr(lag_game_elo, width = 20, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right'),
+         t1_rol_opp_talent_l20 :=  rollapplyr(lag_opp_talent, width = 20, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right') /
+                        rollapplyr(lag_game_talent, width = 20, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right')) %>% 
+  
+  select(-c(lag_opp_rk, lag_opp_elo, lag_opp_talent, lag_game_rk, lag_game_talent, lag_game_elo)) 
+
 
 
 
@@ -1516,7 +1579,9 @@ t1_game_info_metrics= rbind(home_df, away_df) %>%
 # create df that changes t1 metrics into t2 metrics
 t2_game_info_metrics = t1_game_info_metrics %>% 
   select(season, week, t1_team, t1_rol_record_l3, t1_rol_record_l1, t1_rol_record_l20, t1_rol_pa_pg_l3,
-         t1_rol_pa_pg_l1, t1_rol_pa_pg_l20, t1_rol_pf_pg_l3, t1_rol_pf_pg_l1, t1_rol_pf_pg_l20) %>% 
+         t1_rol_pa_pg_l1, t1_rol_pa_pg_l20, t1_rol_pf_pg_l3, t1_rol_pf_pg_l1, t1_rol_pf_pg_l20,
+         t1_rol_opp_rk_l3, t1_rol_opp_rk_l1, t1_rol_opp_rk_l20, t1_rol_opp_elo_l3, t1_rol_opp_elo_l1,
+         t1_rol_opp_elo_l20, t1_rol_opp_talent_l3, t1_rol_opp_talent_l1, t1_rol_opp_talent_l20) %>% 
   rename(t2_team = t1_team, 
          t2_rol_record_l3 = t1_rol_record_l3, 
          t2_rol_record_l1 = t1_rol_record_l1,
@@ -1526,10 +1591,23 @@ t2_game_info_metrics = t1_game_info_metrics %>%
          t2_rol_pa_pg_l20 = t1_rol_pa_pg_l20, 
          t2_rol_pf_pg_l3 = t1_rol_pf_pg_l3, 
          t2_rol_pf_pg_l1 = t1_rol_pf_pg_l1,
-         t2_rol_pf_pg_l20 = t1_rol_pf_pg_l20)
+         t2_rol_pf_pg_l20 = t1_rol_pf_pg_l20,
+         
+         t2_rol_opp_rk_l3 = t1_rol_opp_rk_l3,
+         t2_rol_opp_rk_l1 = t1_rol_opp_rk_l1,
+         t2_rol_opp_rk_l20 = t1_rol_opp_rk_l20,
+         t2_rol_opp_elo_l3 = t1_rol_opp_elo_l3,
+         t2_rol_opp_elo_l1 = t1_rol_opp_elo_l1,
+         t2_rol_opp_elo_l20 = t1_rol_opp_elo_l20,
+         t2_rol_opp_talent_l3 = t1_rol_opp_talent_l3,
+         t2_rol_opp_talent_l1 = t1_rol_opp_talent_l1,
+         t2_rol_opp_talent_l20 = t1_rol_opp_talent_l20) 
 
 # join those t2 metrics to the t1 df (because teams appear on both sides each week)
-all_df = left_join(t1_game_info_metrics, t2_game_info_metrics, by = c('t2_team', 'week', 'season'))
+all_df = left_join(t1_game_info_metrics, t2_game_info_metrics, by = c('t2_team', 'week', 'season')) %>% 
+  mutate(t1_home = ifelse(neutral_site, 0, t1_home),
+         t2_home = ifelse(neutral_site, 0, t2_home),
+         neutral_site = ifelse(neutral_site, 1, 0))
 
   
 ```
@@ -2058,6 +2136,44 @@ all_oa = points_oa %>%
 
 #View(all_oa %>% filter(t1_team == "Notre Dame"))
   
+```
+
+
+## Over Time Difference Stats
+```{r}
+
+
+# func to get matching rollavg cols to compute calcs for the off/def cols
+get_matching_col_otdiff3 <- function(colname, window) {
+    gsub("l3", window, colname)
+}
+
+
+get_matching_col_otdiff3(x, "l20")
+
+ot_diff = all_oa %>% 
+  # for each original column, find its rolling average inverse and compute the oa stat
+  mutate(across(
+    .cols = matches("l3"), # Select original columns
+    .fns = ~ {
+      # Identify the current team (t1/t2) and role (off/def)
+      current_col <- cur_column()
+      new_window = "l20"
+      
+      # Construct the matching column name
+      matching_col <- get_matching_col_otdiff3(current_col, new_window)
+      
+      # Perform the subtraction if the matching column exists
+      
+      result = . - get(matching_col)
+      return(result)
+      } 
+    ,
+    .names = "{.col}_diffl20" # Add differences as new columns
+  )) 
+
+
+
 ```
 
 
