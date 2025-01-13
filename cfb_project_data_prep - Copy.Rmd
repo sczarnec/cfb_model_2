@@ -28,7 +28,7 @@ library(zoo)
 ### IDENTIFY CURRENT SEASON ###
 
 current_season = 2024
-current_week = 22
+current_week = 23
 
 
 
@@ -72,13 +72,6 @@ load_gi_data_func = function(year_start, year_end) {
 
 # load in gbg data
 game_info_orig = load_gi_data_func(2014, 2024) # original df
-#game_info_orig = read.csv("game_info_orig.csv")
-# game_info_old = game_info_orig %>% filter(season != current_season)
-# game_info_new = load_gi_data_func(current_season, current_season) # original df
-# game_info_new$home_post_win_prob = as.numeric(game_info_new$home_post_win_prob)
-# game_info_new$away_post_win_prob = as.numeric(game_info_new$away_post_win_prob)
-# game_info_new$excitement_index = as.numeric(game_info_new$excitement_index)
-#game_info = bind_rows(game_info_old, game_info_new) %>%  
 game_info = game_info_orig %>% 
   # change weeks for postseason
   mutate(week = ifelse(season_type == "regular", week, ifelse(
@@ -117,11 +110,7 @@ week_id = game_info %>% select(game_id, week) %>% rename(new_week = week)
 
 
 # load cfb pbp data 
-#cfb_data_orig = load_cfb_pbp(seasons = c(2014:2024)) #original df
-cfb_data_reg_orig = load_cfb_pbp(seasons = 2024) #original df
-#cfb_data_reg_orig = read.csv("cfb_data_orig.csv")
-#cfb_data_reg_old = cfb_data_reg_orig %>% filter(year != current_season)
-#cfb_data_reg_new = load_cfb_pbp(seasons = c(current_season:current_season))
+cfb_data_reg_orig = load_cfb_pbp(seasons = c(2014:2024)) 
 cfb_data_reg = cfb_data_reg_orig
 
 
@@ -145,16 +134,7 @@ load_post_data_func = function(year_start, year_end) {
 }
 
 # load in postseason pbp data
-cfb_data_post_orig = load_post_data_func(2024, 2024)
-#cfb_data_post_orig = read.csv("cfb_data_post_orig.csv")
-# cfb_data_post_old = cfb_data_post_orig %>% filter(season != current_season)
-# cfb_data_post_new = load_post_data_func(2024, 2024)
-# cfb_data_post_new$id_play = as.integer(cfb_data_post_new$id_play)
-# cfb_data_post_new$half = as.integer(cfb_data_post_new$half)
-# cfb_data_post_new$down_end = as.integer(cfb_data_post_new$down_end)
-# cfb_data_post_new$ppa = as.integer(cfb_data_post_new$ppa)
-# cfb_data_post_new$id_drive = as.integer(cfb_data_post_new$id_drive)
-#cfb_data_post = bind_rows(cfb_data_post_old, cfb_data_post_new) %>% 
+cfb_data_post_orig = load_post_data_func(2014, 2024)
 cfb_data_post = cfb_data_post_orig %>% 
   rename(week = wk,
          year = season)
@@ -290,11 +270,8 @@ load_bet_data_func = function(year_start, year_end, joining_data){
 
 
 # load in betting data
-betting_lines_orig = load_bet_data_func(2024, 2024, game_info)
-#betting_lines_orig = read.csv("betting_lines.csv")
-betting_lines_old = betting_lines_orig %>% filter(season != current_season)
-betting_lines_new = load_bet_data_func(current_season, current_season, game_info)
-betting_lines = bind_rows(betting_lines_orig, betting_lines_new)
+betting_lines_orig = load_bet_data_func(2014, 2024, game_info)
+betting_lines = betting_lines_orig
 
 
 
@@ -330,7 +307,6 @@ load_talent_data_func = function(year_start, year_end) {
 
 # team talent data load
 talent_data_orig = load_talent_data_func(2015, 2024)
-#talent_data_orig = read.csv("talent_data_orig.csv")
 
 
 
@@ -352,10 +328,14 @@ load_weather_data_func = function(year_start, year_end) {
   for (szn in c(year_start:year_end)){
     # this one creates the df for the first year in the loop
     if (szn == year_start){
-      full_df = cfbd_game_weather(year = szn)
+      full_df = cfbd_game_weather(year = szn, season_type = "regular")
+      df = cfbd_game_weather(year = szn, season_type = "postseason")
+      full_df = bind_rows(full_df, df)
     # this one binds other dfs to full_df
     } else{
-        df = cfbd_game_weather(year = szn)
+        df = cfbd_game_weather(year = szn, season_type = "regular")
+        full_df = bind_rows(full_df, df)
+        df = cfbd_game_weather(year = szn, season_type = "postseason")
         full_df = bind_rows(full_df, df)
         }
   }
@@ -364,9 +344,7 @@ load_weather_data_func = function(year_start, year_end) {
 }
 
 # weather data load
-weather_data_orig = load_weather_data_func(2024, 2024)
-#weather_data_orig = read.csv("weather_data_orig.csv")
-
+weather_data_orig = load_weather_data_func(2014, 2024)
 
 
 
@@ -404,7 +382,6 @@ load_ranking_data_func = function(year_start, year_end) {
 
 # load ranking data
 ranking_data_orig = load_ranking_data_func(2014,2024)
-#ranking_data_orig = read.csv("ranking_data_orig.csv")
 
 
 
@@ -1039,7 +1016,7 @@ cfb_data_fg = cfb_data %>%
 
 
 # call desired per game metrics with rolling mean of 3 weeks
-rolling_pg_orig_3 = rolling_pg_compiler(c("turnover", "touchdown", "sack", "punt", "fg_made", 
+rolling_pg_orig_3 = rolling_pg_compiler(c("turnover", "touchdown", "sack", "punt", 
                                            "penalty_flag", "play_count"), 3, cfb_data)
 
 # call desired per play metrics with rolling mean of 3 weeks
@@ -1062,7 +1039,7 @@ rolling_pass_orig_3 = rolling_gpp_compiler(c("EPA", "wpa", "success"), 3, cfb_da
 
 
 # call desired per game metrics with rolling mean of 3 weeks
-rolling_pg_orig_1 = rolling_pg_compiler(c("turnover", "touchdown", "sack", "punt", "fg_made",
+rolling_pg_orig_1 = rolling_pg_compiler(c("turnover", "touchdown", "sack", "punt",
                                            "penalty_flag", "play_count"), 1, cfb_data)
 
 # call desired per play metrics with rolling mean of 3 weeks
@@ -1083,7 +1060,7 @@ rolling_pass_orig_1 = rolling_gpp_compiler(c("EPA", "wpa", "success"), 1, cfb_da
 ### YEAR-LONG STATS ###
 
 # call desired per game metrics with rolling mean of 3 weeks
-rolling_pg_orig_yr = rolling_pg_compiler(c("turnover", "touchdown", "sack", "punt", "fg_made", 
+rolling_pg_orig_yr = rolling_pg_compiler(c("turnover", "touchdown", "sack", "punt", 
                                            "penalty_flag", "play_count"), 20, cfb_data)
 
 # call desired per play metrics with rolling mean of 3 weeks
@@ -1124,21 +1101,26 @@ joined_metrics = left_join(joined_metrics, rolling_pass_orig_yr, by = c("team", 
 ## Join Betting Data to GbG
 ```{r}
 
-## CHANGE
-provider_sort = c("consensus", "DraftKings", "ESPN Bet", "numberfire", "teamrankings", "Caesars", 
-                "Caesars (Pennsylvania)", "Caesars Sportsbook (Colorado)",  "Bovada", 
-                "William Hill (New Jersey)", "SugarHouse")
+## JOIN BETTING DATA ##
 
 
+# custom priority list for betting lines
+provider_sort = c("consensus", "DraftKings", "Caesars", "Caesars (Pennsylvania)", 
+                  "Caesars Sportsbook (Colorado)", "William Hill (New Jersey)", "ESPN Bet", 
+                  "numberfire", "teamrankings", "Bovada", "SugarHouse")
 
+
+# data frame for spread, pick one of the books' spread
 full_df_sp = betting_lines %>% select(game_id, provider, spread) %>% rename(away_book_pd = spread) %>% filter(!is.na(away_book_pd))%>% group_by(game_id) %>% arrange(match(provider, provider_sort)) %>% slice(1) %>% ungroup()%>% select(-provider)
 
-
+# data frame for over under, pick one of the books' over under
 full_df_ou = betting_lines %>%  select(game_id, provider, over_under) %>% filter(!is.na(over_under)) %>%group_by(game_id) %>% arrange(match(provider, provider_sort)) %>% slice(1) %>% ungroup() %>% select(-provider)
 
+# data frame for ml, pick one of the books' ml
 full_df_ml = betting_lines %>%  select(game_id, provider, home_moneyline, away_moneyline) %>% filter(!is.na(home_moneyline)) %>%group_by(game_id) %>% arrange(match(provider, provider_sort)) %>% slice(1) %>% ungroup() %>% select(-provider)
 
 
+# join the three data frames
 game_info_bet = left_join(game_info, full_df_sp, by = c("game_id"))
 game_info_bet = left_join(game_info_bet, full_df_ou, by = c("game_id"))
 game_info_bet = left_join(game_info_bet, full_df_ml, by = c("game_id"))
@@ -1149,17 +1131,28 @@ game_info_bet = left_join(game_info_bet, full_df_ml, by = c("game_id"))
 ## Join Talent Data to GbG
 ```{r}
 
+
+## JOIN TALENT DATA ##
+
+
+# change year
 talent_data = talent_data_orig %>% 
   rename(season = year)
 
+
+# home df
 talent_data_home = talent_data %>% 
   rename(home_team = school,
          home_talent = talent)
 
+# away df
 talent_data_away = talent_data %>% 
   rename(away_team = school,
          away_talent = talent)
 
+
+
+# join home and away dfs to GbG data respectively
 game_info_talent = left_join(game_info_bet, talent_data_home, c("season", "home_team"))
 game_info_talent = left_join(game_info_talent, talent_data_away, c("season", "away_team"))
 
@@ -1168,44 +1161,51 @@ game_info_talent = left_join(game_info_talent, talent_data_away, c("season", "aw
 ## Join Ranking Data to GbG
 ```{r}
 
+## JOIN RANKING DATA ##
 
+
+
+# last week of regular season for each year? to determine which week will be joined to postseason 
 max_weeks  = ranking_data_orig %>% group_by(season) %>% summarise(max_week = max(week))
 
 
 
+# join ranking data with max weeks
 ranking_data = left_join(ranking_data_orig, max_weeks, c("season")) %>% 
-  filter(poll == "AP Top 25",
+  filter(poll == "AP Top 25", # just regular season AP
          season_type == "regular") %>% 
-  mutate(week = week + 1) %>%
-  mutate(season_type = ifelse((week > max_week & season != current_season) | (week > max_week & season == current_season & current_week > 19), "postseason", "regular")) %>% 
-  mutate(rank_tier = ifelse(rank >= 17, 3, ifelse(rank >= 9, 2, ifelse(rank >= 1, 1)))) %>% 
+  mutate(week = week + 1) %>% # weeks correspond with the next, change
+  mutate(season_type = ifelse((week > max_week & season != current_season) | (week > max_week & season == current_season & current_week > 19), "postseason", "regular")) %>% # for past seasons, the last week will correspond to postseason, for this season, it will only do so if we are currently in the postseason
+  mutate(rank_tier = ifelse(rank >= 17, 3, ifelse(rank >= 9, 2, ifelse(rank >= 1, 1)))) %>% # tiers of rankings from 1-4 (1-8, 9-16, 17-25, unranked)
   select(school, week, season, rank_tier, season_type)
 
 
+# regular season df
 ranking_data_reg = ranking_data %>% 
   filter(season_type == "regular") %>% 
   select(-season_type)
 
+# home
 ranking_data_reg_home = ranking_data_reg %>% 
   rename(rank_tier_home = rank_tier,
          home_team = school) 
-
+# away
 ranking_data_reg_away = ranking_data_reg %>% 
   rename(rank_tier_away = rank_tier,
          away_team = school)
   
 
 
-
-
+# postseason df
 ranking_data_post = ranking_data %>% 
   filter(season_type == "postseason") %>% 
   select(-week)
 
+# home
 ranking_data_post_home = ranking_data_post %>% 
   rename(rank_tier_home_post = rank_tier,
          home_team = school)
-
+# away
 ranking_data_post_away = ranking_data_post %>% 
   rename(rank_tier_away_post = rank_tier,
          away_team = school)
@@ -1213,13 +1213,15 @@ ranking_data_post_away = ranking_data_post %>%
 
 
 
-
+# join regular/postseason home/away dfs respectively to GbG
 game_info_rank = left_join(game_info_talent, ranking_data_reg_home, by = c("home_team", "season", "week"))
 game_info_rank = left_join(game_info_rank, ranking_data_post_home, by = c("home_team", "season", "season_type"))
 game_info_rank = left_join(game_info_rank, ranking_data_reg_away, by = c("away_team", "season", "week"))
 game_info_rank = left_join(game_info_rank, ranking_data_post_away, by = c("away_team", "season", "season_type"))
 
 
+# if a given week is in the postseason, make that the team's rank tier
+# if a given team is unranked (NA for joined value), they are tier 4
 game_info_rank = game_info_rank %>% 
   mutate(rank_tier_away = ifelse(!is.na(rank_tier_away_post), rank_tier_away_post, rank_tier_away),
          rank_tier_home = ifelse(!is.na(rank_tier_home_post), rank_tier_home_post, rank_tier_home)) %>% 
@@ -1236,6 +1238,11 @@ game_info_rank = game_info_rank %>%
 ## Join Weather Data to GbG
 ```{r}
 
+
+## JOIN WEATHER DATA ##
+
+
+# select necessary cols, change if indoor, create categories for rain (for easier future predictions)
 weather_data = weather_data_orig %>% 
   select(game_id, game_indoors, temperature, humidity, precipitation, wind_speed) %>% 
   mutate(temperature = ifelse(game_indoors, 70, temperature)) %>% 
@@ -1249,6 +1256,7 @@ weather_data = weather_data_orig %>%
   select(-c(precipitation, game_indoors))
 
 
+# join data to GbG
 game_info_weather = left_join(game_info_rank, weather_data, by = "game_id")
 
 
@@ -1264,6 +1272,7 @@ game_info_weather = left_join(game_info_rank, weather_data, by = "game_id")
 
 ### SELECT IMPORTANT COLS AND MAKE NEW ONES
 
+
 # select important columns from game_info and create needed cols
 game_data = game_info_weather %>%
   select(game_id, season, week, season_type, completed, neutral_site, conference_game, home_team,
@@ -1276,8 +1285,6 @@ game_data = game_info_weather %>%
          away_point_diff = away_points - home_points, # eventual response var
          home_win = ifelse(home_points > away_points, 1, 0), # eventual response var and predictor
          away_win = ifelse(away_points > home_points, 1, 0)) # eventual response var and predictor
-
-
 
 
 
@@ -1312,13 +1319,17 @@ home_df = game_data %>%
          t2_moneyline = away_moneyline,
          t2_talent = away_talent,
          t2_rank_tier = rank_tier_away,
-         t2_elo = away_pregame_elo) %>% 
+         t2_elo = away_pregame_elo,
+         book_over_under = over_under) %>% 
   mutate(t1_home = 1,
          t2_home = 0,
          t1_serv_acad = ifelse(t1_team %in% c("Army", "Navy", "Air Force"), 1, 0),
          t2_serv_acad = ifelse(t2_team %in% c("Army", "Navy", "Air Force"), 1, 0)) %>% 
   mutate(t1_talent = ifelse(t1_serv_acad == 1, 0, t1_talent),
          t2_talent = ifelse(t2_serv_acad == 1, 0, t2_talent)) %>% 
+  
+  
+  # create home/away stats
   arrange(t1_team, season, week) %>% # sort before lag calc
   group_by(t1_team, season) %>% # group before lag calc
   
@@ -1443,7 +1454,7 @@ away_df = home_df %>%
 
 
 
-### BIND HOME AND AWAY DFS AND CREATE OVERALL GBG METRICS ###
+  ### BIND HOME AND AWAY DFS AND CREATE OVERALL GBG METRICS ###
 
 
 # bind home and away dfs and create rolling predictors from them
@@ -1562,7 +1573,39 @@ t1_game_info_metrics= rbind(home_df, away_df) %>%
                         rollapplyr(lag_game_talent, width = 20, FUN = sum, # right rolling sum using lag
                                            partial = TRUE, align = 'right')) %>% 
   
-  select(-c(lag_opp_rk, lag_opp_elo, lag_opp_talent, lag_game_rk, lag_game_talent, lag_game_elo)) 
+  select(-c(lag_opp_rk, lag_opp_elo, lag_opp_talent, lag_game_rk, lag_game_talent, lag_game_elo)) %>% 
+  
+  
+
+  
+  ## create roll avg book errors
+  mutate(actual_spread = t2_points - t1_points,
+         actual_over_under = (t1_points + t2_points)) %>% 
+  mutate(book_spread_error = t1_book_spread - actual_spread,
+         book_over_under_error = book_over_under - actual_over_under) %>% 
+  mutate(lag_spread_err = ifelse(is.na(lag(book_spread_error)), 0, lag(book_spread_error)),
+         lag_ou_error = ifelse(is.na(lag(book_over_under_error)), 0, lag(book_over_under_error)),
+         lag_game_spread = ifelse(is.na(lag(book_spread_error)), 0, 1),
+         lag_game_ou = ifelse(is.na(lag(book_over_under_error)), 0, 1)) %>% 
+  mutate(t1_rol_spr_err_l3 :=  rollapplyr(lag_spread_err, width = 3, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right') /
+                        rollapplyr(lag_game_spread, width = 3, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right'),
+         t1_rol_ou_err_l3 :=  rollapplyr(lag_ou_error, width = 3, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right') /
+                        rollapplyr(lag_game_ou, width = 3, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right'),
+         t1_rol_spr_err_l20 :=  rollapplyr(lag_spread_err, width = 20, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right') /
+                        rollapplyr(lag_game_spread, width = 20, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right'),
+         t1_rol_ou_err_l20 :=  rollapplyr(lag_ou_error, width = 20, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right') /
+                        rollapplyr(lag_game_ou, width = 20, FUN = sum, # right rolling sum using lag
+                                           partial = TRUE, align = 'right'))%>% 
+  
+  select(-c(actual_spread, actual_over_under, book_spread_error, book_over_under_error, lag_spread_err, lag_ou_error, lag_game_spread, lag_game_ou))
+  
 
 
 
@@ -1581,7 +1624,8 @@ t2_game_info_metrics = t1_game_info_metrics %>%
   select(season, week, t1_team, t1_rol_record_l3, t1_rol_record_l1, t1_rol_record_l20, t1_rol_pa_pg_l3,
          t1_rol_pa_pg_l1, t1_rol_pa_pg_l20, t1_rol_pf_pg_l3, t1_rol_pf_pg_l1, t1_rol_pf_pg_l20,
          t1_rol_opp_rk_l3, t1_rol_opp_rk_l1, t1_rol_opp_rk_l20, t1_rol_opp_elo_l3, t1_rol_opp_elo_l1,
-         t1_rol_opp_elo_l20, t1_rol_opp_talent_l3, t1_rol_opp_talent_l1, t1_rol_opp_talent_l20) %>% 
+         t1_rol_opp_elo_l20, t1_rol_opp_talent_l3, t1_rol_opp_talent_l1, t1_rol_opp_talent_l20,
+         t1_rol_spr_err_l3, t1_rol_ou_err_l3, t1_rol_spr_err_l20, t1_rol_ou_err_l20) %>% 
   rename(t2_team = t1_team, 
          t2_rol_record_l3 = t1_rol_record_l3, 
          t2_rol_record_l1 = t1_rol_record_l1,
@@ -1601,13 +1645,30 @@ t2_game_info_metrics = t1_game_info_metrics %>%
          t2_rol_opp_elo_l20 = t1_rol_opp_elo_l20,
          t2_rol_opp_talent_l3 = t1_rol_opp_talent_l3,
          t2_rol_opp_talent_l1 = t1_rol_opp_talent_l1,
-         t2_rol_opp_talent_l20 = t1_rol_opp_talent_l20) 
+         t2_rol_opp_talent_l20 = t1_rol_opp_talent_l20,
+         
+         t2_rol_spr_err_l3 = t1_rol_spr_err_l3,
+         t2_rol_ou_err_l3 = t1_rol_ou_err_l3,
+         t2_rol_spr_err_l20 = t1_rol_spr_err_l20,
+         t2_rol_ou_err_l20 = t1_rol_ou_err_l20) 
+
+
+
 
 # join those t2 metrics to the t1 df (because teams appear on both sides each week)
 all_df = left_join(t1_game_info_metrics, t2_game_info_metrics, by = c('t2_team', 'week', 'season')) %>% 
   mutate(t1_home = ifelse(neutral_site, 0, t1_home),
          t2_home = ifelse(neutral_site, 0, t2_home),
-         neutral_site = ifelse(neutral_site, 1, 0))
+         neutral_site = ifelse(neutral_site, 1, 0)) %>% 
+  mutate(t1_rol_record_ha_l20 = ifelse(neutral_site == 1, t1_rol_record_l20, t1_rol_record_ha_l20),
+         t1_rol_pf_pg_ha_l20 = ifelse(neutral_site == 1, t1_rol_pf_pg_l20, t1_rol_pf_pg_ha_l20),
+         t1_rol_pa_pg_ha_l20 = ifelse(neutral_site == 1, t1_rol_pa_pg_l20, t1_rol_pa_pg_ha_l20),
+         t2_rol_record_ha_l20 = ifelse(neutral_site == 1, t2_rol_record_l20, t2_rol_record_ha_l20),
+         t2_rol_pf_pg_ha_l20 = ifelse(neutral_site == 1, t2_rol_pf_pg_l20, t2_rol_pf_pg_ha_l20),
+         t2_rol_pa_pg_ha_l20 = ifelse(neutral_site == 1, t2_rol_pa_pg_l20, t2_rol_pa_pg_ha_l20)
+         ) %>% 
+  mutate(regular_szn = ifelse(season_type == "regular", 1, 0)) %>% 
+  select(-season_type)
 
   
 ```
@@ -1871,7 +1932,7 @@ points_oa = pbp_oa %>%
   
   # compute rolling means based on these lags
   mutate(across(
-    .cols = matches("(_pf_|_pa_).*lag"), # Select columns containing "off"/"def" and "t1"/"t2"
+    .cols = matches("(_pf_|_pa_).*lag"), # Select columns 
     .fns = ~ {
       # Determine the rolling window size based on the column name
       window_size <- get_window_size(cur_column())
@@ -1898,7 +1959,7 @@ points_oa = pbp_oa %>%
   mutate(across(
     .cols = matches("(_pf_|_pa_)") & matches("t1") & !matches("_rollavg"), # Select original columns
     .fns = ~ {
-      # Identify the current team (t1/t2) and role (off/def)
+      # Identify 
       current_col <- cur_column()
       new_team <- ifelse(grepl("t1", current_col), "t2", "t1")
       new_role <- ifelse(grepl("pf", current_col), "pa", "pf")
@@ -1936,7 +1997,7 @@ points_oa = pbp_oa %>%
   
   # compute rolling means based on these lags
   mutate(across(
-    .cols = matches("(_pf_|_pa_).*lag"), # Select columns containing "off"/"def" and "t1"/"t2"
+    .cols = matches("(_pf_|_pa_).*lag"), # Select columns 
     .fns = ~ {
       # Determine the rolling window size based on the column name
       window_size <- get_window_size(cur_column())
@@ -1963,7 +2024,7 @@ points_oa = pbp_oa %>%
   mutate(across(
     .cols = matches("(_pf_|_pa_)") & matches("t2") & !matches("_rollavg") , # Select original columns
     .fns = ~ {
-      # Identify the current team (t1/t2) and role (off/def)
+      # Identify 
       current_col <- cur_column()
       new_team <- ifelse(grepl("t1", current_col), "t2", "t1")
       new_role <- ifelse(grepl("pf", current_col), "pa", "pf")
@@ -2015,7 +2076,7 @@ all_oa = points_oa %>%
   
   # compute rolling means based on these lags
   mutate(across(
-    .cols = matches("(record).*lag"), # Select columns containing "off"/"def" and "t1"/"t2"
+    .cols = matches("(record).*lag"), # Select columns 
     .fns = ~ {
       # Determine the rolling window size based on the column name
       window_size <- get_window_size(cur_column())
@@ -2080,7 +2141,7 @@ all_oa = points_oa %>%
   
   # compute rolling means based on these lags
   mutate(across(
-    .cols = matches("(record).*lag"), # Select columns containing "off"/"def" and "t1"/"t2"
+    .cols = matches("(record).*lag"), # Select columns 
     .fns = ~ {
       # Determine the rolling window size based on the column name
       window_size <- get_window_size(cur_column())
@@ -2129,12 +2190,6 @@ all_oa = points_oa %>%
 
 
 
-
-
-  
-#matching_col = get_matching_col("t2_ rol_turnover_pg_off_l3", "t1", "def")
-
-#View(all_oa %>% filter(t1_team == "Notre Dame"))
   
 ```
 
@@ -2143,20 +2198,24 @@ all_oa = points_oa %>%
 ```{r}
 
 
+
+## DIFFERENCE OVER TIME STAT CALCS ##
+
+
 # func to get matching rollavg cols to compute calcs for the off/def cols
 get_matching_col_otdiff3 <- function(colname, window) {
     gsub("l3", window, colname)
 }
 
 
-get_matching_col_otdiff3(x, "l20")
 
+# compute stats
 ot_diff = all_oa %>% 
-  # for each original column, find its rolling average inverse and compute the oa stat
+  # for each original column, find the difference between recent and past of the stat
   mutate(across(
-    .cols = matches("l3"), # Select original columns
+    .cols = matches("l3") & !matches("_err_"), # Select original columns
     .fns = ~ {
-      # Identify the current team (t1/t2) and role (off/def)
+      # Identify 
       current_col <- cur_column()
       new_window = "l20"
       
@@ -2181,11 +2240,14 @@ ot_diff = all_oa %>%
 
 Write Master df to csv
 ```{r}
-# write to csv
-#write.csv(both_joined, "G:/Shared drives/Machine Learning/cfb_project_data_prep_file_updated.csv")
 
-# write betting data to csv
-#write.csv(betting_lines, "G:/Shared drives/Machine Learning/betting_lines_file_updated.csv")
+# final df
+# final_df = ot_diff
+
+# write to csv
+#write.csv(final_df, "G:/Shared drives/Machine Learning/cfb_model_data_prep_full.csv")
+
+
 ```
 
 
