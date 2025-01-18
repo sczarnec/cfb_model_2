@@ -1,5 +1,5 @@
 ---
-title: "CFB Prediction Project"
+title: "CFB Model Data Prep"
 author: "_____"
 date: "2024-09-23"
 output: html_document
@@ -2242,10 +2242,12 @@ Write Master df to csv
 ```{r}
 
 # final df
-# final_df = ot_diff
+final_df = ot_diff
 
 # write to csv
-#write.csv(final_df, "G:/Shared drives/Machine Learning/cfb_model_data_prep_full.csv")
+#write.csv(final_df, "cfb_model_data_prep_full.csv")
+
+#write.csv(final_df, gzfile("cfb_model_data_prep_full.csv.gz"), row.names = FALSE)
 
 
 ```
