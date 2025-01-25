@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ### Install Packages
-```{r}
+```{r, warning=FALSE}
 library(tidyverse)
 library(ggplot2)
 library(rsample)
@@ -39,12 +39,13 @@ cfb_model_data = read.csv(gzfile("cfb_model_data_prep_full.csv"))[,-1]
 
 ```{r}
 
+# current weeks, useful for later predicting this week's games
 current_week = 23
 current_season = 2024
 
 
 # df with only rows with both fbs team (fcs data incomplete, easier to exclude these)
-# also, let's filter out 
+# later weeks to let stats accumulate, data before 2015 incomplete 
 fbs_only = cfb_model_data %>% 
   filter(t1_division == "fbs" & t2_division == "fbs") %>% 
   filter(week > 3,
@@ -53,7 +54,8 @@ fbs_only = cfb_model_data %>%
   mutate(conference_game = ifelse(conference_game, 1, 0))
   
 
-# treat NAs
+# treat NAs, add lag as the stat if there isn't one for a given week
+# filter out games that are incomplete, unless for this week
 model_prepped_orig = fbs_only %>% 
   filter((completed == TRUE & !is.na(precipitation_code)) | (week == current_week & season == current_season),
          ) %>% # get rid of non-played games
@@ -68,12 +70,11 @@ model_prepped_orig = fbs_only %>%
   arrange(t2_team, season, week) %>% 
   mutate(across(starts_with("t2_rol"), ~ ifelse(is.na(.), lag(.), .))) %>% 
   ungroup() %>% 
-  select(-c(rol_win_l1, "rol_loss_l1", "t1_moneyline", "t2_moneyline"))
+  select(-c(rol_win_l1, "rol_loss_l1", "t1_moneyline", "t2_moneyline")) %>% 
+  mutate(actual_over = ifelse(total_points > book_over_under, 1, 0)) %>% 
+  mutate(t1_actual_cover = ifelse(t1_point_diff > t1_book_spread*-1, 1, 0))
 
-# # df with future games only
-# future_games = fbs_only %>% 
-#   filter(completed == FALSE) %>% 
-#   select(-c(completed))
+
 
 
 ```
@@ -91,21 +92,24 @@ df_na_percentage <- data.frame(
 )
 
 # display
-df_na_percentage %>% 
-  arrange(desc(na_rate))
+# df_na_percentage %>% 
+#   arrange(desc(na_rate))
 ```
 
 
 
-
+### Arrange Data
 ```{r}
 
+# dummy cols 
 model_prepped_dummy = model_prepped_orig %>% 
   rename(pc = precipitation_code) %>% 
   dummy_cols('pc') %>% 
   select(-pc)
 
-move_cols = c("pc_no_rain", "pc_light_rain", "pc_moderate_rain", "pc_heavy_rain", "week", "neutral_site", "t1_home", "t2_home", "conference_game", "season", "t1_point_diff", "t1_win", "total_points", "t1_points", "t2_points", "game_id", "t1_team", "t2_team", "t1_conference", "t2_conference", "completed")
+
+# rearrange col order (makes easier when looking at predictions later)
+move_cols = c("pc_no_rain", "pc_light_rain", "pc_moderate_rain", "pc_heavy_rain", "week", "neutral_site", "t1_home", "t2_home", "conference_game", "season", "t1_point_diff", "t1_win", "total_points", "t1_actual_cover", "actual_over", "t1_points", "t2_points", "game_id", "t1_team", "t2_team", "t1_conference", "t2_conference", "completed")
 
 model_prepped_moved = model_prepped_dummy[, c(setdiff(names(model_prepped_dummy), move_cols), move_cols)]
 
@@ -114,7 +118,7 @@ model_prepped_moved = model_prepped_dummy[, c(setdiff(names(model_prepped_dummy)
 
 
 
-
+### Omit Remaining NA Rows
 ```{r}
 # omit NA cols (only one thousand)
 model_prepped_omit = na.omit(model_prepped_moved) 
@@ -136,13 +140,12 @@ df_na_percentage <- data.frame(
 )
 
 # display
-df_na_percentage %>% 
-  arrange(desc(na_rate))
+# df_na_percentage %>% 
+#   arrange(desc(na_rate))
 ```
 
 
 ### Separate Train and Test Data
-
 ```{r}
 
 # Split the data by game_id (we want both rows of each game in same training/test sets)
@@ -167,9 +170,9 @@ dim(train)
 dim(test)
 
 
-
-write.csv(test, "test.csv")
-write.csv(train, "train.csv")
+# write to csv for tuning script
+# write.csv(test, "test.csv")
+# write.csv(train, "train.csv")
 ```
 
 ### Prepare Data for XGBoost
@@ -210,6 +213,30 @@ wp_train_matrix = xgb.DMatrix(data = as.matrix(train[,1:596]),
 # Create training matrix
 wp_test_matrix = xgb.DMatrix(data = as.matrix(test[,1:596]), 
                               label = as.numeric(test$t1_win))
+
+
+
+# Cover Prob
+
+# Create training matrix
+cp_train_matrix = xgb.DMatrix(data = as.matrix(train[,1:596]), 
+                              label = as.numeric(train$t1_actual_cover))
+
+# Create training matrix
+cp_test_matrix = xgb.DMatrix(data = as.matrix(test[,1:596]), 
+                              label = as.numeric(test$t1_actual_cover))
+
+
+
+# Over Prob
+
+# Create training matrix
+op_train_matrix = xgb.DMatrix(data = as.matrix(train[,1:596]), 
+                              label = as.numeric(train$actual_over))
+
+# Create training matrix
+op_test_matrix = xgb.DMatrix(data = as.matrix(test[,1:596]), 
+                              label = as.numeric(test$actual_over))
 ```
 
 <br>
@@ -249,16 +276,16 @@ bst_final_pd <- xgboost(data = pd_train_matrix, # Set training data
 
 ```
 
+### Linear Prediction Error
 ```{r}
 
-boost_preds_final_pd <- predict(bst_final_pd, pd_test_matrix) # Create predictions for xgboost model
-
+# predictions
+boost_preds_final_pd <- predict(bst_final_pd, pd_test_matrix) 
 pred_dat_final_pd <- cbind.data.frame(boost_preds_final_pd, test$t1_point_diff)
 
-rmse(test$t1_point_diff, boost_preds_final_pd) # print rmse
-
+# error measures
+rmse(test$t1_point_diff, boost_preds_final_pd) 
 mse(test$t1_point_diff, boost_preds_final_pd)
-
 mae(test$t1_point_diff, boost_preds_final_pd)
 
 
@@ -266,6 +293,7 @@ head(pred_dat_final_pd) # print prediction df
 
 ```
 
+### Win/Loss Prediction Accuracy
 ```{r}
 
 # analyze predictive ability on wins/losses
@@ -284,25 +312,18 @@ print(conf_matrix_final_pd)
 ```
 
 
+### Spread Prediction Accuracy
 ```{r}
 
-
+# create spread analysis df
 pred_dat_spread_final_pd = pred_dat_final_pd
 pred_dat_spread_final_pd$t1_book_spread = test$t1_book_spread
-
 pred_dat_spread_final_pd = pred_dat_spread_final_pd %>% 
   rename(t1_book_point_diff = t1_book_spread,
          t1_actual_point_diff = `test$t1_point_diff`) %>% 
   mutate(t1_book_point_diff = t1_book_point_diff*-1) %>% 
   mutate(pred_cover = ifelse(boost_preds_final_pd > t1_book_point_diff, 1, 0),
          actual_cover = ifelse(t1_actual_point_diff > t1_book_point_diff, 1, 0)) 
-
-
-
-
-# pred_dat_win_spread = bl_pred %>% 
-#   mutate(actual_win = ifelse(`test$t1_point_diff` > 0, 1, 0)) %>% 
-#   mutate(pred_win = ifelse(boost_preds_final > 0, 1, 0))
 
 
 # Create confusion matrix
@@ -315,7 +336,7 @@ print(conf_matrix_spread)
 
 
 
-### At last, let's look at our plot of Actuals vs Predicted Values
+### Actual v Predicted Plot
 
 ```{r}
 # combine into df
@@ -377,20 +398,18 @@ bst_final_wp <- xgboost(data = wp_train_matrix, # Set training data
 
 ```
 
+
+### Win/Loss Prediction Accuracy
 ```{r}
 
-
-
+# predict win/loss
 boost_preds_final_wp <- predict(bst_final_wp, wp_test_matrix) # Create predictions for xgboost model
 
+
+# create accuracy df
 pred_dat_final_wp <- cbind.data.frame(boost_preds_final_wp, test$t1_point_diff) %>% 
   mutate(pred_win = ifelse(boost_preds_final_wp > .5, 1, 0))
-
 pred_dat_final_wp$t1_win = test$t1_win
-
-
-
-# analyze predictive ability on wins/losses
 pred_dat_win_final_wp = pred_dat_final_wp %>% 
   mutate(actual_win = t1_win) 
 
@@ -415,6 +434,83 @@ xgb.plot.importance(imp_mat_wp, top_n = 10)
 
 
 <br>
+
+
+
+# *Cover Prob*
+
+### Tuned Model 
+
+```{r}
+set.seed(844)
+bst_final_cp <- xgboost(data = cp_train_matrix, # Set training data
+              
+        
+               
+              eta = 0.04, # Set learning rate
+                     
+              max.depth = 3, # Set max depth
+              min_child_weight = 7, # Set minimum number of samples in node to split
+              gamma = .1, # Set minimum loss reduction for split,
+              # alpha = .1,
+              # lambda = 3.5,
+              
+              
+              #alpha = 0.1, 
+              #lambda = 1.5,
+               
+              nrounds = 130 , # Set number of rounds
+              early_stopping_rounds = 10, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+              eval_metric = "auc",
+              eval_metric = "error") # Set evaluation metric to use
+
+
+
+```
+
+
+### Cover Spread Prediction Accuracy
+```{r}
+
+# predict win/loss
+boost_preds_final_cp <- predict(bst_final_cp, cp_test_matrix) # Create predictions for xgboost model
+
+
+# create accuracy df
+pred_dat_final_cp <- cbind.data.frame(boost_preds_final_cp) %>% 
+  mutate(pred_cover = ifelse(boost_preds_final_cp > .5, 1, 0))
+pred_dat_final_cp$actual_cover = test$t1_actual_cover
+pred_dat_final_cp$season = test$season
+
+
+
+# Create confusion matrix
+conf_matrix_final_cp <- confusionMatrix(as.factor(pred_dat_final_cp$pred_cover),
+                                     as.factor(pred_dat_final_cp$actual_cover), positive = "1")
+
+# Print confusion matrix and sensitivity
+print(conf_matrix_final_cp)
+
+```
+
+
+### Variable Importance, Top 10
+```{r}
+# Extract importance
+imp_mat_cp <- xgb.importance(model = bst_final_cp)
+# Plot importance (top 10 variables)
+xgb.plot.importance(imp_mat_cp, top_n = 10)
+```
+
+
+<br>
+
+
 
 # *Total Points*
 
@@ -452,16 +548,18 @@ bst_final_tp <- xgboost(data = tp_train_matrix, # Set training data
 ```
 
 
+### Linear Prediction Error
 ```{r}
 
-boost_preds_final_tp <- predict(bst_final_tp, tp_test_matrix) # Create predictions for xgboost model
+# predict total points
+boost_preds_final_tp <- predict(bst_final_tp, tp_test_matrix) 
 
+# create total points df
 pred_dat_final_tp <- cbind.data.frame(boost_preds_final_tp, test$total_points)
 
-rmse(test$total_points, boost_preds_final_tp) # print rmse
-
+# error measures
+rmse(test$total_points, boost_preds_final_tp) 
 mse(test$total_points, boost_preds_final_tp)
-
 mae(test$total_points, boost_preds_final_tp)
 
 
@@ -469,12 +567,13 @@ head(pred_dat_final_tp) # print prediction df
 
 ```
 
+
+### Over/Under Prediction Accuracy
 ```{r}
 
-
+# create over/under df
 pred_dat_ou_final_tp = pred_dat_final_tp
 pred_dat_ou_final_tp$book_over_under = test$book_over_under
-
 pred_dat_ou_final_tp = pred_dat_ou_final_tp %>% 
   rename(book_total_points = book_over_under,
          actual_total_points = `test$total_points`) %>% 
@@ -493,7 +592,7 @@ print(conf_matrix_ou)
 ```
 
 
-### At last, let's look at our plot of Actuals vs Predicted Values
+### Actual vs Predicted Values
 
 ```{r}
 # combine into df
@@ -514,29 +613,100 @@ imp_mat_tp <- xgb.importance(model = bst_final_tp)
 xgb.plot.importance(imp_mat_tp, top_n = 10)
 ```
 
+<br>
 
 
 
+# *Over Prob*
+
+### Tuned Model 
+
+```{r}
+set.seed(844)
+bst_final_op <- xgboost(data = op_train_matrix, # Set training data
+              
+        
+               
+              eta = 0.04, # Set learning rate
+                     
+              max.depth = 3, # Set max depth
+              min_child_weight = 7, # Set minimum number of samples in node to split
+              gamma = .1, # Set minimum loss reduction for split,
+              # alpha = .1,
+              # lambda = 3.5,
+              
+              
+              #alpha = 0.1, 
+              #lambda = 1.5,
+               
+              nrounds = 130 , # Set number of rounds
+              early_stopping_rounds = 10, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+              eval_metric = "auc",
+              eval_metric = "error") # Set evaluation metric to use
 
 
 
+```
+
+
+### Cover Spread Prediction Accuracy
+```{r}
+
+# predict win/loss
+boost_preds_final_op <- predict(bst_final_op, op_test_matrix) # Create predictions for xgboost model
+
+
+# create accuracy df
+pred_dat_final_op <- cbind.data.frame(boost_preds_final_op) %>% 
+  mutate(pred_over = ifelse(boost_preds_final_op > .5, 1, 0))
+pred_dat_final_op$actual_over = test$actual_over
 
 
 
+# Create confusion matrix
+conf_matrix_final_op <- confusionMatrix(as.factor(pred_dat_final_op$pred_over),
+                                     as.factor(pred_dat_final_op$actual_over), positive = "1")
 
+# Print confusion matrix and sensitivity
+print(conf_matrix_final_op)
+
+```
+
+
+### Variable Importance, Top 10
+```{r}
+# Extract importance
+imp_mat_op <- xgb.importance(model = bst_final_op)
+# Plot importance (top 10 variables)
+xgb.plot.importance(imp_mat_op, top_n = 10)
+```
+
+
+<br>
+
+# *Natty Prediction*
 
 
 ```{r}
+
+# grab test data for natty
 natty_test = model_prepped_moved %>% 
   filter(week == 23, season == 2024)
 
-
+# turn into xgb matrix
 natty_matrix = xgb.DMatrix(data = as.matrix(natty_test[,1:596]))
 
+# predict our variables
 natty_pd_prediction <- predict(bst_final_pd, natty_matrix)
 natty_wp_prediction <- predict(bst_final_wp, natty_matrix)
 natty_tp_prediction <- predict(bst_final_tp, natty_matrix)
 
+# create initial predictions
 natty_results = natty_test
 natty_results$pd_pred = round(natty_pd_prediction,2)
 natty_results$wp_pred = round(natty_wp_prediction,4)
@@ -549,11 +719,11 @@ natty_results = natty_results %>% select(game_id, t1_team, t2_team, pd_pred, wp_
   mutate(pred_winner_score = tp_pred/2 + abs(pd_pred)/2) %>% 
   mutate(pred_loser_score = tp_pred/2 - abs(pd_pred)/2)
 
-
+# move some over to later join
 book_join = natty_results %>% select(game_id, t1_team, t1_book_spread, t1_point_diff, wp_pred, tp_pred, book_over_under, total_points) %>% rename(actual_total_points = total_points, pred_win_prob = wp_pred, pred_total_points = tp_pred)
 
 
-
+# format for just one row per game
 agg_results = natty_results %>% 
   group_by(game_id) %>%  
   summarize(pred_winner = max(pred_winner),
@@ -563,6 +733,7 @@ agg_results = natty_results %>%
             pred_point_diff = mean(abs(pd_pred))
             )
 
+# mutate our prediction accuracies (once we have them)
 final_results = left_join(agg_results, book_join, by = c("game_id", "pred_winner" =  "t1_team")) %>% 
   rename(book_spread = t1_book_spread,
          actual_point_diff = t1_point_diff) %>% 
@@ -577,12 +748,11 @@ final_results = left_join(agg_results, book_join, by = c("game_id", "pred_winner
   select(-c(pred_over, actual_over))
   
 
-
-```
-
-```{r}
+# write predictions to csv
 write.csv(final_results, "natty_predictions.csv")
+
 ```
 
+<br>
 
 

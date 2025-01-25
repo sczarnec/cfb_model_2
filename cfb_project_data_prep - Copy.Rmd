@@ -392,6 +392,106 @@ ranking_data_orig = load_ranking_data_func(2014,2024)
 
 
 
+
+
+### LOAD IN STATS DATA ###
+
+
+
+weeks_in_seasons = game_info_orig %>% 
+  filter(completed, season_type == "regular") %>%
+  group_by(season) %>% 
+  summarize(max_week = max(week))
+
+
+load_stats_data_func = function(start_yr, end_yr){
+
+      for (yr in c(start_yr:end_yr)){
+        
+        print(yr)
+        
+        weeks_this_reg_szn = (weeks_in_seasons %>% filter(season == yr))[[2]]
+        
+      
+        for (end_wk in c(1:weeks_this_reg_szn)){
+          
+          print(end_wk)
+          
+            for (range in c(1,3,20)){
+              
+              
+                  start_wk = ifelse(end_wk - range < 1, 1, end_wk - range)
+      
+                  data_pulled = cfbd_stats_season_advanced(
+                    yr,
+                    excl_garbage_time = TRUE,
+                    start_week = start_wk,
+                    end_week = end_wk
+                  )
+                  
+                  data_mut = data_pulled %>% 
+                    select(-c(conference))
+                  
+                  
+                  colnames(data_mut)[3:length(colnames(data_mut))] <- paste0("rol_", colnames(data_mut)[3:length(colnames(data_mut))], "_l", range)
+                  
+                  
+                  
+                  if(range == 1){
+                    
+                    data_mut = data_mut %>% mutate(end_week = end_wk)
+                    week_df = data_mut
+                    
+                  } else{
+                    
+                    data_mut = data_mut %>% select(-c(season))
+                    week_df = left_join(week_df, data_mut, by = "team")
+                    
+                  }
+         
+                  
+            }
+          
+            
+            if(end_wk == 1){
+              year_df = week_df
+            } else{
+              year_df = bind_rows(week_df, year_df)
+            }
+          
+          
+          
+        }
+        
+        
+        if(yr == start_yr){
+          final_df = year_df
+        } else{
+          final_df = bind_rows(year_df, final_df)
+        }
+        
+        
+      }
+      
+   return(final_df)
+
+}
+
+
+
+
+stat_data_orig = load_stats_data_func(2015, 2024)
+
+
+
+stat_data = stat_data_orig %>% 
+  mutate(join_wk = end_week + 1) %>% 
+  select(-c(end_week))
+
+
+
+
+
 ```
 
 
@@ -1705,6 +1805,111 @@ both_joined = left_join(t1_joined, t2_prepped_metrics, by = c("t2_team", "season
 ```
 
 
+
+## Join in Stats Data
+```{r}
+
+### Join the Joined df with stats api
+
+
+
+
+stat_year_range = unique(range(stat_data$season))[1]:unique(range(stat_data$season))[2]
+
+
+for (yr in stat_year_range){
+  
+  if (yr == unique(range(stat_data$season))[1]){
+  
+      stat_data_filt = stat_data %>% filter(season == yr)
+      unique_teams = unique(stat_data_filt$team)
+      unique_weeks = unique(stat_data_filt$join_wk)
+      
+      stat_data_all = data.frame(expand.grid(team = unique_teams, join_wk = unique_weeks, season = yr))
+  
+  } else{
+    
+      stat_data_filt = stat_data %>% filter(season == yr)
+      unique_teams = unique(stat_data_filt$team)
+      unique_weeks = unique(stat_data_filt$join_wk)   
+      
+      stat_data_yr = data.frame(expand.grid(team = unique_teams, join_wk = unique_weeks, season = yr))
+      
+      stat_data_all = bind_rows(stat_data_yr, stat_data_all)
+    
+  }
+  
+}
+
+
+stat_data_joined = left_join(stat_data_all, stat_data, by = c("team", "season", "join_wk")) %>% 
+  arrange(team, season, join_wk) %>% 
+  group_by(team, season) %>% 
+  mutate(across(everything(), ~ ifelse(
+    is.na(.), 
+    ifelse(!is.na(lag(.)), lag(.), lag(., 2)),  # Check lag 1, then lag 2
+    .
+  ))) %>% 
+  ungroup()
+
+
+
+
+
+
+
+
+both_joined_mut = left_join(both_joined, weeks_in_seasons, by = "season")
+
+both_joined_mut = both_joined_mut %>% 
+  mutate(join_wk = ifelse(week < 19, week, max_week + 1))
+
+
+
+
+stat_data_t1 = stat_data_joined %>% 
+  rename(t1_team = team)
+
+colnames(stat_data_t1) <- ifelse(
+  grepl("off", colnames(stat_data_t1)),  # Check if column name contains "off"
+  paste0("t1_", colnames(stat_data_t1)),
+  ifelse(
+    grepl("def", colnames(stat_data_t1)),  # Check if column name contains "def"
+    paste0("t1_", colnames(stat_data_t1)),
+    colnames(stat_data_t1)  # Leave other column names unchanged
+  )
+)
+
+
+
+
+stat_data_t2 = stat_data_joined%>% 
+  rename(t2_team = team)
+
+colnames(stat_data_t2) <- ifelse(
+  grepl("off", colnames(stat_data_t2)),  # Check if column name contains "off"
+  paste0("t2_", colnames(stat_data_t2)),
+  ifelse(
+    grepl("def", colnames(stat_data_t2)),  # Check if column name contains "def"
+    paste0("t2_", colnames(stat_data_t2)),
+    colnames(stat_data_t2)  # Leave other column names unchanged
+  )
+)
+
+
+
+
+stat_joined = left_join(both_joined_mut, stat_data_t1, by = c("t1_team", "season", "join_wk"))
+stat_joined = left_join(stat_joined, stat_data_t2, by = c("t2_team", "season", "join_wk")) %>% 
+  select(-c(max_week, join_wk))
+
+
+```
+
+
+
+
+
 ## Create Over Average Metrics
 ```{r}
 
@@ -1762,7 +1967,7 @@ get_matching_col_record <- function(colname, swap_team, swap_window) {
 
 
 # pbp stats 
-pbp_oa = both_joined %>% 
+pbp_oa = stat_joined %>% 
   
   ## T1
   
@@ -1773,7 +1978,7 @@ pbp_oa = both_joined %>%
   
   # compute lags for all stats
   mutate(across(
-    .cols = matches("(off|def)") & matches("t2"),
+    .cols = matches("(off|def)") & matches("t2") & !matches("_total_ppa_"),
     .fns = ~ {
       lag(.x, n = 1)
     },
@@ -1807,7 +2012,7 @@ pbp_oa = both_joined %>%
     
   # for each original column, find its rolling average inverse and compute the oa stat
   mutate(across(
-    .cols = matches("(off|def)") & matches("t1") & !matches("_rollavg") , # Select original columns
+    .cols = matches("(off|def)") & matches("t1") & !matches("_rollavg")  & !matches("_total_ppa_"), # Select original columns
     .fns = ~ {
       # Identify the current team (t1/t2) and role (off/def)
       current_col <- cur_column()
@@ -1840,7 +2045,7 @@ pbp_oa = both_joined %>%
   
   # compute lags for all stats
   mutate(across(
-    .cols = matches("(off|def)") & matches("t1") & !matches("oa"),
+    .cols = matches("(off|def)") & matches("t1") & !matches("oa") & !matches("_total_ppa_"),
     .fns = ~ {
       lag(.x, n = 1)
     },
@@ -1874,7 +2079,7 @@ pbp_oa = both_joined %>%
     
   # for each original column, find its rolling average inverse and compute the oa stat
   mutate(across(
-    .cols = matches("(off|def)") & matches("t2") & !matches("_rollavg") , # Select original columns
+    .cols = matches("(off|def)") & matches("t2") & !matches("_rollavg")  & !matches("_total_ppa_"), # Select original columns
     .fns = ~ {
       # Identify the current team (t1/t2) and role (off/def)
       current_col <- cur_column()
@@ -2247,7 +2452,7 @@ final_df = ot_diff
 # write to csv
 #write.csv(final_df, "cfb_model_data_prep_full.csv")
 
-#write.csv(final_df, gzfile("cfb_model_data_prep_full.csv.gz"), row.names = FALSE)
+#write.csv(final_df, gzfile("cfb_model_data_prep_full_check.csv.gz"), row.names = FALSE)
 
 
 ```
