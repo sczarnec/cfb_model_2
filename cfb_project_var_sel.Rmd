@@ -1,0 +1,1238 @@
+---
+title: "CFB Model Training"
+author: "The Five Horsemen"
+date: "2024-10-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### Install Packages
+```{r, warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(rsample)
+library(mice)
+library(fastDummies)
+library(xgboost)
+library(Metrics)
+library(caret)
+```
+
+<br>
+
+# *CFB Data Data Prep*
+
+### Load Data
+
+```{r, warning=FALSE}
+
+# model data
+cfb_model_data = read.csv(gzfile("cfb_model_data_prep_full_check.csv.gz"))
+
+
+```
+
+
+### Initial Wrangling
+
+```{r}
+
+# current weeks, useful for later predicting this week's games
+current_week = 24
+current_season = 2024
+
+
+# df with only rows with both fbs team (fcs data incomplete, easier to exclude these)
+# later weeks to let stats accumulate, data before 2015 incomplete 
+fbs_only = cfb_model_data %>% 
+  filter(t1_division == "fbs" & t2_division == "fbs") %>% 
+  filter(week > 3,
+         season > 2014)%>% 
+  select(-c(t1_division, t2_division)) %>% 
+  mutate(conference_game = ifelse(conference_game, 1, 0))
+  
+
+# treat NAs, add lag as the stat if there isn't one for a given week
+# filter out games that are incomplete, unless for this week
+model_prepped_orig = fbs_only %>% 
+  filter((completed == TRUE & !is.na(precipitation_code)) | (week == current_week & season == current_season),
+         ) %>% # get rid of non-played games
+  
+  # replace NAs from pbp with lag for each team/season window, both for t1 and t2
+  # best estimate of these stats, if available
+  group_by(season, t1_team) %>%
+  arrange(t1_team, season, week) %>% 
+  mutate(across(starts_with("t1_rol"), ~ ifelse(is.na(.), lag(.), .))) %>% 
+  ungroup() %>% 
+  group_by(season, t2_team) %>% 
+  arrange(t2_team, season, week) %>% 
+  mutate(across(starts_with("t2_rol"), ~ ifelse(is.na(.), lag(.), .))) %>% 
+  ungroup() %>% 
+  select(-c(rol_win_l1, "rol_loss_l1", "t1_moneyline", "t2_moneyline")) %>% 
+  mutate(actual_over = ifelse(total_points > book_over_under, 1, 0)) %>% 
+  mutate(t1_actual_cover = ifelse(t1_point_diff > t1_book_spread*-1, 1, 0))
+
+
+
+
+```
+
+### NA Check
+```{r}
+
+# Calculate the percentage of NAs in each column
+na_rate <- colMeans(is.na(model_prepped_orig))
+
+# Create a new data frame with the NA percentages
+df_na_percentage <- data.frame(
+  column = colnames(model_prepped_orig),
+  na_rate = na_rate
+)
+
+# display
+df_na_percentage %>%
+  arrange(desc(na_rate))
+```
+
+
+
+### Arrange Data
+```{r}
+
+# dummy cols 
+model_prepped_dummy = model_prepped_orig %>% 
+  rename(pc = precipitation_code) %>% 
+  dummy_cols('pc') %>% 
+  select(-pc)
+
+
+# rearrange col order (makes easier when looking at predictions later)
+move_cols = c("pc_no_rain", "pc_light_rain", "pc_moderate_rain", "pc_heavy_rain", "week", "neutral_site", "t1_home", "t2_home", "conference_game", "season", "t1_point_diff", "t1_win", "total_points", "t1_actual_cover", "actual_over", "t1_points", "t2_points", "game_id", "t1_team", "t2_team", "t1_conference", "t2_conference", "completed")
+
+model_prepped_moved = model_prepped_dummy[, c(setdiff(names(model_prepped_dummy), move_cols), move_cols)]
+
+```
+
+
+
+
+### Omit Remaining NA Rows
+```{r}
+# omit NA cols (only one thousand)
+model_prepped_omit = na.omit(model_prepped_moved) 
+
+
+```
+
+
+
+### Last Check of NAs
+```{r}
+
+# Calculate the percentage of NAs in each column
+na_rate <- colMeans(is.na(model_prepped_omit))
+
+# Create a new data frame with the NA percentages
+df_na_percentage <- data.frame(
+  column = colnames(model_prepped_omit),
+  na_rate = na_rate
+)
+
+# display
+# df_na_percentage %>% 
+#   arrange(desc(na_rate))
+```
+
+
+### Separate Train and Test Data
+```{r}
+
+# Split the data by game_id (we want both rows of each game in same training/test sets)
+set.seed(792)
+split = group_initial_split(model_prepped_omit, group = game_id, prop = 0.70)
+
+# Extract training and test sets
+train_orig = training(split) 
+
+train = train_orig 
+#train = model_prepped_omit %>% filter(season >= 2018 & season <= 2023)
+
+
+test_orig = testing(split)
+
+test = test_orig
+#test = test %>% filter(season == 2024)
+#test = bind_rows(test_orig, model_prepped_omit)
+
+# Check the dimensions of the resulting datasets
+dim(train)
+dim(test)
+
+
+# write to csv for tuning script
+#write.csv(test, "test.csv")
+#write.csv(train, "train.csv")
+```
+
+
+### Separate data Sources
+```{r}
+
+
+train_v1 = train %>%
+  select(-c(grep("rol_off", names(train)), grep("rol_def", names(train))))
+
+train_v2 = train %>%
+  select(-c(grep("off_l", names(train)), grep("def_l", names(train))))
+
+
+
+test_v1 = test %>%
+  select(-c(grep("rol_off", names(test)), grep("rol_def", names(test))))
+
+test_v2 = test %>%
+  select(-c(grep("off_l", names(test)), grep("def_l", names(test))))
+
+
+
+
+
+```
+
+
+
+
+### Prepare Data for XGBoost
+```{r}
+
+# Point Diff
+
+# Create training matrix
+pd_train_matrix_v1 = xgb.DMatrix(data = as.matrix(train_v1[,1:596]), 
+                              label = as.numeric(train_v1$t1_point_diff))
+
+# Create training matrix
+pd_test_matrix_v1 = xgb.DMatrix(data = as.matrix(test_v1[,1:596]), 
+                              label = as.numeric(test_v1$t1_point_diff))
+
+# Create training matrix
+pd_train_matrix_v2 = xgb.DMatrix(data = as.matrix(train_v2[,1:1260]), 
+                              label = as.numeric(train_v2$t1_point_diff))
+
+# Create training matrix
+pd_test_matrix_v2 = xgb.DMatrix(data = as.matrix(test_v2[,1:1260]), 
+                              label = as.numeric(test_v2$t1_point_diff))
+
+
+
+
+# Total Points
+
+# Create training matrix
+tp_train_matrix_v1 = xgb.DMatrix(data = as.matrix(train_v1[,1:596]), 
+                              label = as.numeric(train_v1$total_points))
+
+# Create training matrix
+tp_test_matrix_v1 = xgb.DMatrix(data = as.matrix(test_v1[,1:596]), 
+                              label = as.numeric(test_v1$total_points))
+
+# Create training matrix
+tp_train_matrix_v2 = xgb.DMatrix(data = as.matrix(train_v2[,1:1260]), 
+                              label = as.numeric(train_v2$total_points))
+
+# Create training matrix
+tp_test_matrix_v2 = xgb.DMatrix(data = as.matrix(test_v2[,1:1260]), 
+                              label = as.numeric(test_v2$total_points))
+
+
+
+
+
+
+# Win Prob
+
+# Create training matrix
+wp_train_matrix_v1 = xgb.DMatrix(data = as.matrix(train_v1[,1:596]), 
+                              label = as.numeric(train_v1$t1_win))
+
+# Create training matrix
+wp_test_matrix_v1 = xgb.DMatrix(data = as.matrix(test_v1[,1:596]), 
+                              label = as.numeric(test_v1$t1_win))
+
+# Create training matrix
+wp_train_matrix_v2 = xgb.DMatrix(data = as.matrix(train_v2[,1:1260]), 
+                              label = as.numeric(train_v2$t1_win))
+
+# Create training matrix
+wp_test_matrix_v2 = xgb.DMatrix(data = as.matrix(test_v2[,1:1260]), 
+                              label = as.numeric(test_v2$t1_win))
+
+
+
+# Cover Prob
+
+# Create training matrix
+cp_train_matrix_v1 = xgb.DMatrix(data = as.matrix(train_v1[,1:596]), 
+                              label = as.numeric(train_v1$t1_actual_cover))
+
+# Create training matrix
+cp_test_matrix_v1 = xgb.DMatrix(data = as.matrix(test_v1[,1:596]), 
+                              label = as.numeric(test_v1$t1_actual_cover))
+
+# Create training matrix
+cp_train_matrix_v2 = xgb.DMatrix(data = as.matrix(train_v2[,1:1260]), 
+                              label = as.numeric(train_v2$t1_actual_cover))
+
+# Create training matrix
+cp_test_matrix_v2 = xgb.DMatrix(data = as.matrix(test_v2[,1:1260]), 
+                              label = as.numeric(test_v2$t1_actual_cover))
+
+
+
+# Over Prob
+
+# Create training matrix
+op_train_matrix_v1 = xgb.DMatrix(data = as.matrix(train_v1[,1:596]), 
+                              label = as.numeric(train_v1$actual_over))
+
+# Create training matrix
+op_test_matrix_v1 = xgb.DMatrix(data = as.matrix(test_v1[,1:596]), 
+                              label = as.numeric(test_v1$actual_over))
+
+# Create training matrix
+op_train_matrix_v2 = xgb.DMatrix(data = as.matrix(train_v2[,1:1260]), 
+                              label = as.numeric(train_v2$actual_over))
+
+# Create training matrix
+op_test_matrix_v2 = xgb.DMatrix(data = as.matrix(test_v2[,1:1260]), 
+                              label = as.numeric(test_v2$actual_over))
+```
+
+<br>
+
+# *Point Diff Modeling*
+
+### Tuned Model 
+
+```{r}
+set.seed(844)
+bst_final_pd_v1 <- xgboost(data = pd_train_matrix_v1, # Set training data
+              
+        
+               
+              eta = 0.04, # Set learning rate
+                     
+              max.depth = 3, # Set max depth
+              min_child_weight = 7, # Set minimum number of samples in node to split
+              gamma = .1, # Set minimum loss reduction for split,
+              # alpha = .1,
+              # lambda = 3.5,
+              
+              
+              #alpha = 0.1, 
+              #lambda = 1.5,
+               
+              nrounds = 130 , # Set number of rounds
+              early_stopping_rounds = 10, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+              eval_metric = "rmse") # Set evaluation metric to use
+
+
+
+```
+
+
+### Variable Importance, Top 10
+```{r}
+# Extract importance
+imp_mat_pd_v1 <- xgb.importance(model = bst_final_pd_v1)
+
+```
+
+
+<br>
+
+
+
+
+### Tuned Model 
+
+```{r}
+set.seed(844)
+bst_final_pd_v2 <- xgboost(data = pd_train_matrix_v2, # Set training data
+              
+        
+               
+              eta = 0.04, # Set learning rate
+                     
+              max.depth = 3, # Set max depth
+              min_child_weight = 7, # Set minimum number of samples in node to split
+              gamma = .1, # Set minimum loss reduction for split,
+              # alpha = .1,
+              # lambda = 3.5,
+              
+              
+              #alpha = 0.1, 
+              #lambda = 1.5,
+               
+              nrounds = 130 , # Set number of rounds
+              early_stopping_rounds = 10, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+              eval_metric = "rmse") # Set evaluation metric to use
+
+
+
+```
+
+
+### Variable Importance, Top 10
+```{r}
+# Extract importance
+imp_mat_pd_v2 <- xgb.importance(model = bst_final_pd_v2)
+
+```
+
+
+
+### Select Vars
+
+```{r}
+
+pd_var_list_orig = unique(c(imp_mat_pd_v1[1:3]$Feature, imp_mat_pd_v2[1:3]$Feature))
+
+list_matches = unname(sapply(pd_var_list_orig, function(x) gsub("^t1", "t2", x)))
+
+
+pd_var_list_final = unique(c(pd_var_list_orig, list_matches, move_cols))
+
+pd_var_list_final = pd_var_list_final[-c(grep("t2_book_spread", pd_var_list_final))]
+
+# writeLines(pd_var_list_final, "pd_vars.txt")
+# writeLines(move_cols, "move_cols.txt")
+
+
+
+
+train_pd = train %>% select(any_of(pd_var_list_final))
+test_pd = test %>% select(any_of(pd_var_list_final))
+
+
+
+# Create training matrix
+pd_train_matrix = xgb.DMatrix(data = as.matrix(train_pd[,1:5]), 
+                              label = as.numeric(train_pd$t1_point_diff))
+
+# Create training matrix
+pd_test_matrix = xgb.DMatrix(data = as.matrix(test_pd[,1:5]), 
+                              label = as.numeric(test_pd$t1_point_diff))
+
+
+```
+
+
+
+### Tuned Model 
+
+```{r}
+set.seed(844)
+bst_final_pd <- xgboost(data = pd_train_matrix, # Set training data
+              
+        
+               
+              eta = 0.05, # Set learning rate
+                     
+              max.depth = 3, # Set max depth
+              min_child_weight = 7, # Set minimum number of samples in node to split
+              gamma = .05, # Set minimum loss reduction for split
+              subsample = .8, # Set proportion of training data to use in tree
+              colsample_bytree = 1,
+              
+              
+              #alpha = 0.1, 
+              #lambda = 1.5,
+               
+              nrounds = 110 , # Set number of rounds
+              early_stopping_rounds = 10, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+              eval_metric = "rmse") # Set evaluation metric to use
+
+
+
+```
+
+### Linear Prediction Error
+```{r}
+
+# predictions
+boost_preds_final_pd <- predict(bst_final_pd, pd_test_matrix) 
+pred_dat_final_pd <- cbind.data.frame(boost_preds_final_pd, test$t1_point_diff)
+
+# error measures
+rmse(test$t1_point_diff, boost_preds_final_pd) 
+mse(test$t1_point_diff, boost_preds_final_pd)
+mae(test$t1_point_diff, boost_preds_final_pd)
+
+
+head(pred_dat_final_pd) # print prediction df
+
+```
+
+### Win/Loss Prediction Accuracy
+```{r}
+
+# analyze predictive ability on wins/losses
+pred_dat_win_final_pd = pred_dat_final_pd %>% 
+  mutate(actual_win = ifelse(`test$t1_point_diff` > 0, 1, 0)) %>% 
+  mutate(pred_win = ifelse(boost_preds_final_pd > 0, 1, 0))
+
+
+# Create confusion matrix
+conf_matrix_final_pd <- confusionMatrix(as.factor(pred_dat_win_final_pd$pred_win),
+                                     as.factor(pred_dat_win_final_pd$actual_win), positive = "1")
+
+# Print confusion matrix and sensitivity
+print(conf_matrix_final_pd)
+
+```
+
+
+### Spread Prediction Accuracy
+```{r}
+
+# create spread analysis df
+pred_dat_spread_final_pd = pred_dat_final_pd
+pred_dat_spread_final_pd$t1_book_spread = test$t1_book_spread
+pred_dat_spread_final_pd = pred_dat_spread_final_pd %>% 
+  rename(t1_book_point_diff = t1_book_spread,
+         t1_actual_point_diff = `test$t1_point_diff`) %>% 
+  mutate(t1_book_point_diff = t1_book_point_diff*-1) %>% 
+  mutate(pred_cover = ifelse(boost_preds_final_pd > t1_book_point_diff, 1, 0),
+         actual_cover = ifelse(t1_actual_point_diff > t1_book_point_diff, 1, 0)) 
+
+
+# Create confusion matrix
+conf_matrix_spread <- confusionMatrix(as.factor(pred_dat_spread_final_pd$pred_cover),
+                                     as.factor(pred_dat_spread_final_pd$actual_cover), positive = "1")
+
+# Print confusion matrix and sensitivity
+print(conf_matrix_spread)
+```
+
+### Variable Importance, Top 10
+```{r}
+# Extract importance
+imp_mat_pd <- xgb.importance(model = bst_final_pd)
+# Plot importance (top 10 variables)
+xgb.plot.importance(imp_mat_pd, top_n = 10)
+```
+
+
+
+<br>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# *Win Prob*
+
+
+### Vars 1
+
+```{r}
+set.seed(844)
+bst_final_wp_v1 <- xgboost(data = wp_train_matrix_v1, # Set training data
+              
+        
+               
+              eta = 0.04, # Set learning rate
+                     
+              max.depth = 3, # Set max depth
+              min_child_weight = 7, # Set minimum number of samples in node to split
+              gamma = .1, # Set minimum loss reduction for split,
+              # alpha = .1,
+              # lambda = 3.5,
+              
+              
+              #alpha = 0.1, 
+              #lambda = 1.5,
+               
+              nrounds = 130 , # Set number of rounds
+              early_stopping_rounds = 10, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+              eval_metric = "auc",
+              eval_metric = "error") # Set evaluation metric to use
+
+
+
+```
+
+### Variable Importance, Top 10
+```{r}
+# Extract importance
+imp_mat_wp_v1 <- xgb.importance(model = bst_final_wp_v1)
+
+```
+
+
+### Vars 2
+
+```{r}
+set.seed(844)
+bst_final_wp_v2 <- xgboost(data = wp_train_matrix_v2, # Set training data
+              
+        
+               
+              eta = 0.04, # Set learning rate
+                     
+              max.depth = 3, # Set max depth
+              min_child_weight = 7, # Set minimum number of samples in node to split
+              gamma = .1, # Set minimum loss reduction for split,
+              # alpha = .1,
+              # lambda = 3.5,
+              
+              
+              #alpha = 0.1, 
+              #lambda = 1.5,
+               
+              nrounds = 130 , # Set number of rounds
+              early_stopping_rounds = 10, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+              eval_metric = "auc",
+              eval_metric = "error") # Set evaluation metric to use
+
+
+
+```
+
+### Variable Importance, Top 10
+```{r}
+# Extract importance
+imp_mat_wp_v2 <- xgb.importance(model = bst_final_wp_v2)
+
+```
+
+
+
+### Select Vars
+
+```{r}
+
+wp_var_list_orig = unique(c(imp_mat_wp_v1$Feature, imp_mat_wp_v2$Feature))
+
+list_matches = unname(sapply(wp_var_list_orig, function(x) gsub("^t1", "t2", x)))
+
+
+wp_var_list_final = unique(c(wp_var_list_orig, list_matches, move_cols))
+
+wp_var_list_final = wp_var_list_final[-grep("t2_book_spread", wp_var_list_final)]
+
+#writeLines(wp_var_list_final, "wp_vars.txt")
+
+
+
+
+train_wp = train %>% select(any_of(wp_var_list_final))
+test_wp = test %>% select(any_of(wp_var_list_final))
+
+
+
+# Create training matrix
+wp_train_matrix = xgb.DMatrix(data = as.matrix(train_wp[,1:620]), 
+                              label = as.numeric(train_wp$t1_win))
+
+# Create training matrix
+wp_test_matrix = xgb.DMatrix(data = as.matrix(test_wp[,1:620]), 
+                              label = as.numeric(test_wp$t1_win))
+
+
+```
+
+
+### Tuned Model 
+
+```{r}
+set.seed(844)
+bst_final_wp <- xgboost(data = wp_train_matrix, # Set training data
+              
+        
+               
+              eta = 0.04, # Set learning rate
+                     
+              max.depth = 3, # Set max depth
+              min_child_weight = 7, # Set minimum number of samples in node to split
+              gamma = .1, # Set minimum loss reduction for split,
+              # alpha = .1,
+              # lambda = 3.5,
+              
+              
+              #alpha = 0.1, 
+              #lambda = 1.5,
+               
+              nrounds = 130 , # Set number of rounds
+              early_stopping_rounds = 10, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+              eval_metric = "auc",
+              eval_metric = "error") # Set evaluation metric to use
+
+
+
+```
+
+
+### Win/Loss Prediction Accuracy
+```{r}
+
+# predict win/loss
+boost_preds_final_wp <- predict(bst_final_wp, wp_test_matrix) # Create predictions for xgboost model
+
+
+# create accuracy df
+pred_dat_final_wp <- cbind.data.frame(boost_preds_final_wp, test$t1_point_diff) %>% 
+  mutate(pred_win = ifelse(boost_preds_final_wp > .5, 1, 0))
+pred_dat_final_wp$t1_win = test$t1_win
+pred_dat_win_final_wp = pred_dat_final_wp %>% 
+  mutate(actual_win = t1_win) 
+
+
+# Create confusion matrix
+conf_matrix_final_wp <- confusionMatrix(as.factor(pred_dat_win_final_wp$pred_win),
+                                     as.factor(pred_dat_win_final_wp$actual_win), positive = "1")
+
+# Print confusion matrix and sensitivity
+print(conf_matrix_final_wp)
+
+```
+
+
+### Variable Importance, Top 10
+```{r}
+# Extract importance
+imp_mat_wp <- xgb.importance(model = bst_final_wp)
+# Plot importance (top 10 variables)
+xgb.plot.importance(imp_mat_wp, top_n = 10)
+```
+
+
+
+
+
+<br>
+
+
+
+# *Cover Prob*
+
+
+### Vars 1
+
+```{r}
+set.seed(844)
+bst_final_cp_v1 <- xgboost(data = cp_train_matrix_v1, # Set training data
+              
+        
+               
+              eta = 0.04, # Set learning rate
+                     
+              max.depth = 3, # Set max depth
+              min_child_weight = 7, # Set minimum number of samples in node to split
+              gamma = .1, # Set minimum loss reduction for split,
+              # alpha = .1,
+              # lambda = 3.5,
+              
+              
+              #alpha = 0.1, 
+              #lambda = 1.5,
+               
+              nrounds = 130 , # Set number of rounds
+              early_stopping_rounds = 10, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+              eval_metric = "auc",
+              eval_metric = "error") # Set evaluation metric to use
+
+
+
+```
+
+### Variable Importance, Top 10
+```{r}
+# Extract importance
+imp_mat_cp_v1 <- xgb.importance(model = bst_final_cp_v1)
+
+```
+
+
+### Vars 2
+
+```{r}
+set.seed(844)
+bst_final_cp_v2 <- xgboost(data = cp_train_matrix_v2, # Set training data
+              
+        
+               
+              eta = 0.04, # Set learning rate
+                     
+              max.depth = 3, # Set max depth
+              min_child_weight = 7, # Set minimum number of samples in node to split
+              gamma = .1, # Set minimum loss reduction for split,
+              # alpha = .1,
+              # lambda = 3.5,
+              
+              
+              #alpha = 0.1, 
+              #lambda = 1.5,
+               
+              nrounds = 130 , # Set number of rounds
+              early_stopping_rounds = 10, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+              eval_metric = "auc",
+              eval_metric = "error") # Set evaluation metric to use
+
+
+
+```
+
+### Variable Importance, Top 10
+```{r}
+# Extract importance
+imp_mat_cp_v2 <- xgb.importance(model = bst_final_cp_v2)
+
+```
+
+
+### Select Vars
+
+```{r}
+
+cp_var_list_orig = unique(c(imp_mat_cp_v1[1:250]$Feature, imp_mat_cp_v2[1:250]$Feature))
+
+list_matches = unname(sapply(cp_var_list_orig, function(x) gsub("^t1", "t2", x)))
+
+
+cp_var_list_final = unique(c(cp_var_list_orig, list_matches, move_cols))
+
+cp_var_list_final = cp_var_list_final[-grep("t2_book_spread", cp_var_list_final)]
+
+#writeLines(cp_var_list_final, "cp_vars.txt")
+
+
+
+
+train_cp = train %>% select(any_of(cp_var_list_final))
+test_cp = test %>% select(any_of(cp_var_list_final))
+
+
+
+# Create training matrix
+cp_train_matrix = xgb.DMatrix(data = as.matrix(train_cp[,1:601]), 
+                              label = as.numeric(train_cp$t1_actual_cover))
+
+# Create training matrix
+cp_test_matrix = xgb.DMatrix(data = as.matrix(test_cp[,1:601]), 
+                              label = as.numeric(test_cp$t1_actual_cover))
+
+
+```
+
+
+
+### Tuned Model 
+
+```{r}
+set.seed(844)
+bst_final_cp <- xgboost(data = cp_train_matrix, # Set training data
+              
+        
+               
+              eta = 0.04, # Set learning rate
+                     
+              max.depth = 3, # Set max depth
+              min_child_weight = 7, # Set minimum number of samples in node to split
+              gamma = .1, # Set minimum loss reduction for split,
+              # alpha = .1,
+              # lambda = 3.5,
+              
+              
+              #alpha = 0.1, 
+              #lambda = 1.5,
+               
+              nrounds = 130 , # Set number of rounds
+              early_stopping_rounds = 10, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+              eval_metric = "auc",
+              eval_metric = "error") # Set evaluation metric to use
+
+
+
+```
+
+
+### Cover Spread Prediction Accuracy
+```{r}
+
+# predict win/loss
+boost_preds_final_cp <- predict(bst_final_cp, cp_test_matrix) # Create predictions for xgboost model
+
+
+# create accuracy df
+pred_dat_final_cp <- cbind.data.frame(boost_preds_final_cp) %>% 
+  mutate(pred_cover = ifelse(boost_preds_final_cp > .5, 1, 0))
+pred_dat_final_cp$actual_cover = test$t1_actual_cover
+pred_dat_final_cp$season = test$season
+
+
+
+# Create confusion matrix
+conf_matrix_final_cp <- confusionMatrix(as.factor(pred_dat_final_cp$pred_cover),
+                                     as.factor(pred_dat_final_cp$actual_cover), positive = "1")
+
+# Print confusion matrix and sensitivity
+print(conf_matrix_final_cp)
+
+```
+
+
+### Variable Importance, Top 10
+```{r}
+# Extract importance
+imp_mat_cp <- xgb.importance(model = bst_final_cp)
+# Plot importance (top 10 variables)
+xgb.plot.importance(imp_mat_cp, top_n = 10)
+```
+
+
+<br>
+
+
+
+# *Total Points*
+
+### Tuned Model 
+
+```{r}
+set.seed(844)
+bst_final_tp <- xgboost(data = tp_train_matrix, # Set training data
+              
+        
+               
+              eta = 0.04, # Set learning rate
+                     
+              max.depth = 3, # Set max depth
+              min_child_weight = 7, # Set minimum number of samples in node to split
+              gamma = .1, # Set minimum loss reduction for split,
+              # alpha = .1,
+              # lambda = 3.5,
+              
+              
+              #alpha = 0.1, 
+              #lambda = 1.5,
+               
+              nrounds = 130 , # Set number of rounds
+              early_stopping_rounds = 10, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+              eval_metric = "rmse") # Set evaluation metric to use
+
+
+
+```
+
+
+### Linear Prediction Error
+```{r}
+
+# predict total points
+boost_preds_final_tp <- predict(bst_final_tp, tp_test_matrix) 
+
+# create total points df
+pred_dat_final_tp <- cbind.data.frame(boost_preds_final_tp, test$total_points)
+
+# error measures
+rmse(test$total_points, boost_preds_final_tp) 
+mse(test$total_points, boost_preds_final_tp)
+mae(test$total_points, boost_preds_final_tp)
+
+
+head(pred_dat_final_tp) # print prediction df
+
+```
+
+
+### Over/Under Prediction Accuracy
+```{r}
+
+# create over/under df
+pred_dat_ou_final_tp = pred_dat_final_tp
+pred_dat_ou_final_tp$book_over_under = test$book_over_under
+pred_dat_ou_final_tp = pred_dat_ou_final_tp %>% 
+  rename(book_total_points = book_over_under,
+         actual_total_points = `test$total_points`) %>% 
+  mutate(pred_over = ifelse(boost_preds_final_tp > book_total_points, 1, 0),
+         actual_over = ifelse(actual_total_points > book_total_points, 1, 0)) 
+
+
+
+
+# Create confusion matrix
+conf_matrix_ou <- confusionMatrix(as.factor(pred_dat_ou_final_tp$pred_over),
+                                     as.factor(pred_dat_ou_final_tp$actual_over), positive = "1")
+
+# Print confusion matrix and sensitivity
+print(conf_matrix_ou)
+```
+
+
+### Actual vs Predicted Values
+
+```{r}
+# combine into df
+plot_dat_tp <- cbind.data.frame(test$t1_point_diff,boost_preds_final_tp)
+names(plot_dat_tp) <- c("actual", "predicted")
+
+# plot
+ggplot(plot_dat_tp, aes(x = actual, y = predicted)) +
+  geom_point() +
+  geom_smooth()
+```
+
+### Variable Importance, Top 10
+```{r}
+# Extract importance
+imp_mat_tp <- xgb.importance(model = bst_final_tp)
+# Plot importance (top 10 variables)
+xgb.plot.importance(imp_mat_tp, top_n = 10)
+```
+
+<br>
+
+
+
+# *Over Prob*
+
+### Tuned Model 
+
+```{r}
+set.seed(844)
+bst_final_op <- xgboost(data = op_train_matrix, # Set training data
+              
+        
+               
+              eta = 0.04, # Set learning rate
+                     
+              max.depth = 3, # Set max depth
+              min_child_weight = 7, # Set minimum number of samples in node to split
+              gamma = .1, # Set minimum loss reduction for split,
+              # alpha = .1,
+              # lambda = 3.5,
+              
+              
+              #alpha = 0.1, 
+              #lambda = 1.5,
+               
+              nrounds = 130 , # Set number of rounds
+              early_stopping_rounds = 10, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+              eval_metric = "auc",
+              eval_metric = "error") # Set evaluation metric to use
+
+
+
+```
+
+
+### Cover Spread Prediction Accuracy
+```{r}
+
+# predict win/loss
+boost_preds_final_op <- predict(bst_final_op, op_test_matrix) # Create predictions for xgboost model
+
+
+# create accuracy df
+pred_dat_final_op <- cbind.data.frame(boost_preds_final_op) %>% 
+  mutate(pred_over = ifelse(boost_preds_final_op > .5, 1, 0))
+pred_dat_final_op$actual_over = test$actual_over
+
+
+
+# Create confusion matrix
+conf_matrix_final_op <- confusionMatrix(as.factor(pred_dat_final_op$pred_over),
+                                     as.factor(pred_dat_final_op$actual_over), positive = "1")
+
+# Print confusion matrix and sensitivity
+print(conf_matrix_final_op)
+
+```
+
+
+### Variable Importance, Top 10
+```{r}
+# Extract importance
+imp_mat_op <- xgb.importance(model = bst_final_op)
+# Plot importance (top 10 variables)
+xgb.plot.importance(imp_mat_op, top_n = 10)
+```
+
+
+<br>
+
+# *Natty Prediction*
+
+
+```{r}
+
+# grab test data for natty
+natty_test = model_prepped_moved %>% 
+  filter(week == 23, season == 2024)
+
+# turn into xgb matrix
+natty_matrix = xgb.DMatrix(data = as.matrix(natty_test[,1:596]))
+
+# predict our variables
+natty_pd_prediction <- predict(bst_final_pd, natty_matrix)
+natty_wp_prediction <- predict(bst_final_wp, natty_matrix)
+natty_tp_prediction <- predict(bst_final_tp, natty_matrix)
+
+# create initial predictions
+natty_results = natty_test
+natty_results$pd_pred = round(natty_pd_prediction,2)
+natty_results$wp_pred = round(natty_wp_prediction,4)
+natty_results$tp_pred = round(natty_tp_prediction,2)
+natty_results = natty_results %>% select(game_id, t1_team, t2_team, pd_pred, wp_pred, tp_pred, t1_book_spread, t1_point_diff, total_points, book_over_under) %>% 
+  mutate(pred_winner = ifelse(pd_pred > 0, t1_team, t2_team)) %>% 
+  mutate(pred_loser = ifelse(pd_pred < 0, t1_team, t2_team)) %>% 
+  mutate(pred_winner = ifelse(pd_pred > 0, t1_team, t2_team)) %>% 
+  mutate(pred_loser = ifelse(pd_pred < 0, t1_team, t2_team)) %>% 
+  mutate(pred_winner_score = tp_pred/2 + abs(pd_pred)/2) %>% 
+  mutate(pred_loser_score = tp_pred/2 - abs(pd_pred)/2)
+
+# move some over to later join
+book_join = natty_results %>% select(game_id, t1_team, t1_book_spread, t1_point_diff, wp_pred, tp_pred, book_over_under, total_points) %>% rename(actual_total_points = total_points, pred_win_prob = wp_pred, pred_total_points = tp_pred)
+
+
+# format for just one row per game
+agg_results = natty_results %>% 
+  group_by(game_id) %>%  
+  summarize(pred_winner = max(pred_winner),
+            pred_loser = max(pred_loser),
+            pred_winner_score = max(pred_winner_score),
+            pred_loser_score = max(pred_loser_score),
+            pred_point_diff = mean(abs(pd_pred))
+            )
+
+# mutate our prediction accuracies (once we have them)
+final_results = left_join(agg_results, book_join, by = c("game_id", "pred_winner" =  "t1_team")) %>% 
+  rename(book_spread = t1_book_spread,
+         actual_point_diff = t1_point_diff) %>% 
+  mutate(`pred_win_right?` = ifelse(actual_point_diff > 0, 1, 0)) %>% 
+  mutate(pred_cover = ifelse(pred_point_diff > book_spread*-1, 1, 0),
+         actual_cover = ifelse(actual_point_diff > book_spread*-1, 1, 0)) %>% 
+  mutate(`pred_spread_right?` = ifelse(pred_cover == actual_cover, 1, 0)) %>% 
+  select(-c(pred_cover, actual_cover)) %>% 
+  mutate(pred_over = ifelse(pred_total_points > book_over_under*-1, 1, 0),
+         actual_over = ifelse(actual_total_points > book_over_under*-1, 1, 0)) %>% 
+  mutate(`pred_ou_right?` = ifelse(pred_over == actual_over, 1, 0)) %>% 
+  select(-c(pred_over, actual_over))
+  
+
+# write predictions to csv
+write.csv(final_results, "natty_predictions.csv")
+
+```
+
+<br>
+
+

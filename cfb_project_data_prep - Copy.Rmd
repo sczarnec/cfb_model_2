@@ -35,10 +35,7 @@ current_week = 23
 
 
 
-
-
-
-
+full_df = cfbd_game_info(2020, season_type = "regular")
 
 
 ### LOAD IN GBG Data ###
@@ -71,7 +68,7 @@ load_gi_data_func = function(year_start, year_end) {
 
 
 # load in gbg data
-game_info_orig = load_gi_data_func(2014, 2024) # original df
+game_info_orig = load_gi_data_func(2015, 2024) # original df
 game_info = game_info_orig %>% 
   # change weeks for postseason
   mutate(week = ifelse(season_type == "regular", week, ifelse(
@@ -110,7 +107,7 @@ week_id = game_info %>% select(game_id, week) %>% rename(new_week = week)
 
 
 # load cfb pbp data 
-cfb_data_reg_orig = load_cfb_pbp(seasons = c(2014:2024)) 
+cfb_data_reg_orig = load_cfb_pbp(seasons = c(2015:2024)) 
 cfb_data_reg = cfb_data_reg_orig
 
 
@@ -134,7 +131,7 @@ load_post_data_func = function(year_start, year_end) {
 }
 
 # load in postseason pbp data
-cfb_data_post_orig = load_post_data_func(2014, 2024)
+cfb_data_post_orig = load_post_data_func(2015, 2024)
 cfb_data_post = cfb_data_post_orig %>% 
   rename(week = wk,
          year = season)
@@ -201,7 +198,7 @@ cfb_data = rbind(cfb_data, new_rows)
 # function to load in data
 load_bet_data_func = function(year_start, year_end, joining_data){
   
-      full_df = cfbd_betting_lines(year = 2014, away_team = "Notre Dame")
+      full_df = cfbd_betting_lines(year = 2015, away_team = "Notre Dame")
       full_df = full_df[0,]
       full_df$over_under = as.numeric(full_df$over_under)
       full_df$spread_open = as.numeric(full_df$spread_open)
@@ -270,7 +267,7 @@ load_bet_data_func = function(year_start, year_end, joining_data){
 
 
 # load in betting data
-betting_lines_orig = load_bet_data_func(2014, 2024, game_info)
+betting_lines_orig = load_bet_data_func(2015, 2024, game_info)
 betting_lines = betting_lines_orig
 
 
@@ -344,7 +341,7 @@ load_weather_data_func = function(year_start, year_end) {
 }
 
 # weather data load
-weather_data_orig = load_weather_data_func(2014, 2024)
+weather_data_orig = load_weather_data_func(2015, 2024)
 
 
 
@@ -399,7 +396,7 @@ ranking_data_orig = load_ranking_data_func(2014,2024)
 
 
 weeks_in_seasons = game_info_orig %>% 
-  filter(completed, season_type == "regular") %>%
+  filter(completed, season_type == "regular", home_division == "fbs" | away_division == "fbs") %>%
   group_by(season) %>% 
   summarize(max_week = max(week))
 
@@ -420,7 +417,7 @@ load_stats_data_func = function(start_yr, end_yr){
             for (range in c(1,3,20)){
               
               
-                  start_wk = ifelse(end_wk - range < 1, 1, end_wk - range)
+                  start_wk = ifelse(end_wk + 1 - range < 1, 1, end_wk + 1 - range)
       
                   data_pulled = cfbd_stats_season_advanced(
                     yr,
@@ -488,8 +485,25 @@ stat_data = stat_data_orig %>%
   mutate(join_wk = end_week + 1) %>% 
   select(-c(end_week))
 
+stat_data = stat_data %>% 
+  select(-c(grep("rol_off_plays", names(stat_data)),
+            grep("rol_def_plays", names(stat_data)),
+            grep("rol_off_drives", names(stat_data)),
+            grep("rol_def_drives", names(stat_data)),
+            grep("line_yds_total", names(stat_data)),
+            grep("lvl_yds_total", names(stat_data)),
+            grep("field_yds_total", names(stat_data)),
+            grep("total_opportunities", names(stat_data)),
+            grep("total_ppa", names(stat_data))))
 
 
+
+# data_pulled = cfbd_stats_season_advanced(
+#                     2024,
+#                     excl_garbage_time = TRUE,
+#                     start_week = 16,
+#                     end_week = 16
+#                   )
 
 
 ```
@@ -1757,9 +1771,7 @@ t2_game_info_metrics = t1_game_info_metrics %>%
 
 # join those t2 metrics to the t1 df (because teams appear on both sides each week)
 all_df = left_join(t1_game_info_metrics, t2_game_info_metrics, by = c('t2_team', 'week', 'season')) %>% 
-  mutate(t1_home = ifelse(neutral_site, 0, t1_home),
-         t2_home = ifelse(neutral_site, 0, t2_home),
-         neutral_site = ifelse(neutral_site, 1, 0)) %>% 
+  mutate(neutral_site = ifelse(neutral_site, 1, 0)) %>% 
   mutate(t1_rol_record_ha_l20 = ifelse(neutral_site == 1, t1_rol_record_l20, t1_rol_record_ha_l20),
          t1_rol_pf_pg_ha_l20 = ifelse(neutral_site == 1, t1_rol_pf_pg_l20, t1_rol_pf_pg_ha_l20),
          t1_rol_pa_pg_ha_l20 = ifelse(neutral_site == 1, t1_rol_pa_pg_l20, t1_rol_pa_pg_ha_l20),

@@ -1,0 +1,974 @@
+---
+title: "CFB Game Predictive Model"
+author: ""
+date: "2024-10-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### Install Packages
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(rsample)
+library(mice)
+library(fastDummies)
+library(xgboost)
+library(Metrics)
+library(caret)
+library(httr2)
+library(readr)
+library(cfbfastR)
+```
+
+<br>
+
+
+```{r}
+
+# betting line data
+historical_odds_orig = read.csv("overall_df.csv")
+
+```
+
+```{r}
+
+
+# Mapping each college name manually
+target_names <- c(
+  "Hawai'i", "Jacksonville State", "Tennessee-Martin", "Wake Forest", "Maine", "Central Michigan", 
+  "Charlotte", "Indiana", "Appalachian State", "North Carolina State", "Utah State", "Rice", 
+  "Vanderbilt", "Southern Utah", "Minnesota", "New Mexico", "UNLV", "Eastern Michigan", 
+  "Ball State", "Syracuse", "Temple", "Buffalo", "Michigan State", "Baylor", 
+  "Colorado State", "Arkansas State", "Stanford", "Nevada", "Boston College", "Bowling Green", 
+  "South Alabama", "Maryland", "Fordham", "Houston", "Michigan", "Purdue", 
+  "West Virginia", "Northwestern", "Louisiana", "Virginia Tech", "Villanova", "Air Force", 
+  "Rutgers", "LSU", "Ohio", "Miami (OH)", "Oklahoma State", "Virginia", 
+  "Murray State", "Kent State", "UCLA", "Louisiana Tech", "UC Davis", "Georgia", 
+  "James Madison", "Savannah State", "Troy", "North Carolina Central", "Florida A&M", "Florida Atlantic", 
+  "East Carolina", "VMI", "UTSA", "Middle Tennessee", "OK Panhandle", "East Tennessee State", 
+  "Tulsa", "Memphis", "Kansas", "SMU", "UCF", "Louisiana-Monroe", 
+  "Towson", "Southern Miss", "UMass", "Stephen F. Austin", "Washington State", "UTEP", 
+  "Nebraska", "Coastal Carolina", "Alabama", "TCU", "Northern Iowa", "New Hampshire", 
+  "Auburn", "BYU", "Wyoming", "Northern Arizona", "Old Dominion", "Notre Dame", 
+  "Florida State", "Prairie View A&M", "Pittsburgh", "Charleston Southern", "Mercer", "Akron", 
+  "Kentucky", "Navy", "Central Connecticut State", "Wofford", "San Jose State", "Idaho", 
+  "Idaho State", "Elon", "North Carolina A&T", "Marshall", "North Texas", "Point University", 
+  "McNeese", "Georgia Southern", "South Carolina", "South Florida", "Jacksonville", "Iowa", 
+  "Illinois", "Tulane", "Sacramento State", "Texas Tech", "California", "Grambling State", 
+  "Clemson", "Georgia State", "North Dakota State", "Toledo", "Monmouth", "San Diego State", 
+  "Northern Colorado", "New Mexico State", "Western Michigan", "Texas State", "Oklahoma", "Sam Houston", 
+  "Portland State", "USC", "Ole Miss", "Wagner", "Duquesne", "Gardner-Webb", 
+  "Western Illinois", "Tennessee", "Boise State", "Missouri", "Colorado", "Nicholls State", 
+  "Missouri State", "Houston Christian", "Texas A&M", "Arizona", "Alcorn State", "Georgia Tech", 
+  "Kennesaw State", "Robert Morris", "Incarnate Word", "Arizona State", "UConn", "Missouri S&T", 
+  "Duke", "Oregon", "Fresno State", "Lafayette", "Western Kentucky", "Miami (FL)", 
+  "Oregon State", "Abilene Christian", "Iowa State", "Wisconsin", "Kansas State", "Penn State", 
+  "Mississippi State", "Utah", "Texas Southern", "Clark Atlanta", "Presbyterian", "Florida", 
+  "Tennessee Tech", "Northwestern State", "Morgan State", "The Citadel", "Central Arkansas", "Hampton", 
+  "Chattanooga", "Austin Peay", "Tennessee State", "North Dakota", "Arkansas", "Bethune-Cookman", 
+  "Youngstown State", "UAB", "Eastern Washington", "Stony Brook", "Southeastern Louisiana", "Louisville", 
+  "Eastern Illinois", "Indiana State", "Morehead State", "Arkansas-Pine Bluff", "Montana", "Army", 
+  "Alabama A&M", "Southern University", "Texas", "St. Francis (PA)", "Western Carolina", "Ohio State", 
+  "Weber State", "University at Albany", "South Dakota", "South Dakota State", "Lamar", "Campbell", 
+  "Lehigh", "Norfolk State", "Florida International", "Colgate", "Drake", "Bucknell", 
+  "Montana State", "Illinois State", "Cincinnati", "Eastern Kentucky", "Jackson State", "Cal Poly", 
+  "South Carolina State", "Southeast Missouri State", "Delaware", "Reinhardt", "Liberty", "North Alabama", 
+  "LIU", "Southern Illinois", "Yale", "Tarleton State", "Utah Tech", "Samford", 
+  "Davidson", "Bryant", "East Texas A&M", "Rhode Island", "Tusculum", "Delaware State", 
+  "Sacred Heart", "Lindenwood"
+)
+
+mapped_names <- c(
+  "Hawai'i", "Jacksonville State", "", "Wake Forest", "", "Central Michigan", 
+  "Charlotte", "Indiana", "App State", "NC State", "Utah State", "Rice", 
+  "Vanderbilt", "", "Minnesota", "New Mexico", "UNLV", "Eastern Michigan", 
+  "Ball State", "Syracuse", "Temple", "Buffalo", "Michigan State", "Baylor", 
+  "Colorado State", "Arkansas State", "Stanford", "Nevada", "Boston College", "Bowling Green", 
+  "South Alabama", "Maryland", "", "Houston", "Michigan", "Purdue", 
+  "West Virginia", "Northwestern", "Louisiana", "Virginia Tech", "", "Air Force", 
+  "Rutgers", "LSU", "Ohio", "Miami (OH)", "Oklahoma State", "Virginia", 
+  "", "Kent State", "UCLA", "Louisiana Tech", "", "Georgia", 
+  "James Madison", "", "Troy", "", "", "Florida Atlantic", 
+  "East Carolina", "", "UTSA", "Middle Tennessee", "", "", 
+  "Tulsa", "Memphis", "Kansas", "SMU", "UCF", "UL Monroe", 
+  "", "Southern Miss", "Massachusetts", "", "Washington State", "UTEP", 
+  "Nebraska", "Coastal Carolina", "Alabama", "TCU", "", "", 
+  "Auburn", "BYU", "Wyoming", "", "Old Dominion", "Notre Dame", 
+  "Florida State", "", "Pittsburgh", "", "", "Akron", 
+  "Kentucky", "Navy", "", "", "San Jose State", "Idaho", 
+  "", "", "", "Marshall", "North Texas", "", 
+  "", "Georgia Southern", "South Carolina", "South Florida", "", "Iowa", 
+  "Illinois", "Tulane", "", "Texas Tech", "California", "", 
+  "Clemson", "Georgia State", "", "Toledo", "", "San Diego State", 
+  "", "New Mexico State", "Western Michigan", "Texas State", "Oklahoma", "Sam Houston", 
+  "", "USC", "Ole Miss", "", "", "", 
+  "", "Tennessee", "Boise State", "Missouri", "Colorado", "", 
+  "", "Houston Christian", "Texas A&M", "Arizona", "", "Georgia Tech", 
+  "Kennesaw State", "", "", "Arizona State", "UConn", "", 
+  "Duke", "Oregon", "Fresno State", "", "Western Kentucky", "Miami", 
+  "Oregon State", "", "Iowa State", "Wisconsin", "Kansas State", "Penn State", 
+  "Mississippi State", "Utah", "", "", "", "Florida", 
+  "", "", "", "", "", "", 
+  "", "Austin Peay", "", "", "Arkansas", "Bethune-Cookman", 
+  "", "UAB", "", "", "", "Louisville", 
+  "", "", "", "", "Montana", "Army", 
+  "", "", "Texas", "", "", "Ohio State", 
+  "", "", "", "", "", "",
+  "", "", "Florida International", "", "", "", 
+  "", "", "Cincinnati", "", "", "", 
+  "", "", "", "", "Liberty", "", 
+  "", "", "", "", "", "", 
+  "", "", "", "", "", "", "", ""
+)
+
+
+
+
+# combine target names and mapped names into a data frame, each in its own row
+# create this data frame
+name_change_list_t1 = data.frame(team_one = target_names, team1 = mapped_names) 
+name_change_list_t2 = data.frame(team_two = target_names, team2 = mapped_names) 
+
+# make betting line college names same as cfbfastr
+historical_odds = historical_odds_orig %>% 
+  select(team_one, team_two, week, season, home_ml_odds_15, away_ml_odds_15, home_spread_odds_15, home_spread_value_15, away_spread_odds_15, away_spread_value_15, over_odds_15, under_odds_15, over_value_15, under_value_15)
+historical_odds = left_join(historical_odds, name_change_list_t1, by = "team_one")
+historical_odds = left_join(historical_odds, name_change_list_t2, by = "team_two")
+historical_odds_t1 = historical_odds %>% select(-team_one, -team_two)
+historical_odds_t2 = historical_odds_t1 %>% rename(team2 = team1, team1 = team2)
+historical_odds = bind_rows(historical_odds_t1, historical_odds_t2)
+historical_odds = historical_odds %>% rename(t1_team = team1, t2_team = team2)
+historical_odds = historical_odds %>% 
+  rename(home_ml_odds = home_ml_odds_15,
+         away_ml_odds = away_ml_odds_15,
+         home_spread_val = home_spread_value_15,
+         home_spread_odds = home_spread_odds_15,
+         away_spread_val = away_spread_value_15,
+         away_spread_odds = away_spread_odds_15,
+         over_odds = over_odds_15,
+         over_val = over_value_15,
+         under_odds = under_odds_15,
+         under_val = under_value_15
+         ) 
+
+
+
+
+duplicates = duplicated(historical_odds)
+
+# Keep only non-duplicates
+historical_odds <- historical_odds[!duplicates, ]
+
+
+
+
+
+```
+
+```{r}
+
+historical_odds_mod = historical_odds
+
+# historical_odds_mod$id_max = pmax(historical_odds_mod$t1_team, historical_odds_mod$t2_team)
+# historical_odds_mod$id_min = pmin(historical_odds_mod$t2_team, historical_odds_mod$t1_team)
+
+historical_odds_mod = historical_odds_mod %>% 
+  mutate(type = ifelse(season %in% c(2016,2017,2018, 2021, 2022, 2023) & (week < 14 | week == 15), "reg", ifelse(
+                       season %in% c(2016,2017,2018, 2021, 2022, 2023) & week == 14, "cc", ifelse(
+                       season %in% c(2016,2017,2018, 2021, 2022, 2023), "post", ifelse(
+                       season %in% c(2019,2024,2025) & (week < 15 | week == 16), "reg", ifelse(
+                       season %in% c(2019,2024,2025) & week == 15, "cc", ifelse(
+                       season %in% c(2019,2024,2025), "post", ifelse(
+                       season == 2020 & week <= 15, "reg", ifelse(
+                       season == 2020, "post",
+                       "nothing"
+                       )
+                       ) 
+  ))))))) %>% 
+  select(-c(week))
+  
+  
+  
+  # 2019 15 week cc no 16 army navy, same for 2020, same for 2024
+  # before 2019 14 week cc 15 navy, same for 2021-23
+
+```
+
+<br>
+
+
+
+# *CFB Data Data Prep*
+
+### Load Data
+
+```{r, warning=FALSE}
+
+# model data
+cfb_data = read.csv(gzfile("cfb_model_data_prep_full_check.csv.gz"))
+
+
+
+
+```
+
+
+### Initial Wrangling
+
+```{r}
+
+# current weeks, useful for later predicting this week's games
+current_week = 24
+current_season = 2024
+
+
+# df with only rows with both fbs team (fcs data incomplete, easier to exclude these)
+# later weeks to let stats accumulate, data before 2015 incomplete 
+fbs_only = cfb_data %>% 
+  filter(t1_division == "fbs" & t2_division == "fbs") %>% 
+  filter(week > 3,
+         season > 2014)%>% 
+  select(-c(t1_division, t2_division)) %>% 
+  mutate(conference_game = ifelse(conference_game, 1, 0))
+  
+
+# treat NAs, add lag as the stat if there isn't one for a given week
+# filter out games that are incomplete, unless for this week
+model_prepped_orig = fbs_only %>% 
+  filter((completed == TRUE & !is.na(precipitation_code)) | (week == current_week & season == current_season),
+         ) %>% # get rid of non-played games
+  
+  # replace NAs from pbp with lag for each team/season window, both for t1 and t2
+  # best estimate of these stats, if available
+  group_by(season, t1_team) %>%
+  arrange(t1_team, season, week) %>% 
+  mutate(across(starts_with("t1_rol"), ~ ifelse(is.na(.), lag(.), .))) %>% 
+  ungroup() %>% 
+  group_by(season, t2_team) %>% 
+  arrange(t2_team, season, week) %>% 
+  mutate(across(starts_with("t2_rol"), ~ ifelse(is.na(.), lag(.), .))) %>% 
+  ungroup() %>% 
+  select(-c(rol_win_l1, "rol_loss_l1", "t1_moneyline", "t2_moneyline")) %>% 
+  mutate(actual_over = ifelse(total_points > book_over_under, 1, 0)) %>% 
+  mutate(t1_actual_cover = ifelse(t1_point_diff > t1_book_spread*-1, 1, 0))
+
+
+
+
+```
+
+
+```{r}
+join_bet = model_prepped_orig %>% 
+  mutate(type = ifelse(season %in% c(2015,2016,2017,2018,2021,2022,2023) & (week<14 | week == 15), "reg", ifelse(
+                       season %in% c(2015,2016,2017,2018,2021,2022,2023) & week == 14, "cc", ifelse(
+                       season %in% c(2015,2016,2017,2018,2021,2022,2023), "post", ifelse(
+                       season %in% c(2019, 2020, 2024, 2025) & week < 15, "reg", ifelse(
+                       season %in% c(2019, 2020, 2024, 2025) & week == 15, "cc", ifelse(
+                       season %in% c(2019, 2020, 2024, 2025), "post",
+                       "nothing"
+                       )
+                       )
+                       )
+                       )
+  )))
+
+
+
+# join_bet$id_max = pmax(join_bet$t1_team, join_bet$t2_team)
+# join_bet$id_min = pmin(join_bet$t1_team, join_bet$t2_team)
+
+
+fine = historical_odds_mod[!(duplicated(historical_odds_mod[, c("type", "season", "t1_team", "t2_team")]) |
+                           duplicated(historical_odds_mod[, c("type", "season", "t1_team", "t2_team")], fromLast = TRUE)), ]
+dup = historical_odds_mod[(duplicated(historical_odds_mod[, c("type", "season", "t1_team", "t2_team")]) |
+                           duplicated(historical_odds_mod[, c("type", "season", "t1_team", "t2_team")], fromLast = TRUE)), ]
+dup = dup %>% filter(!is.na(home_spread_odds))
+dup = dup[(duplicated(dup[,c("type", "season", "t1_team", "t2_team")])),]
+back = bind_rows(fine, dup)
+
+
+
+
+# join betting data with our predictions
+join_bet = left_join(join_bet, back, by = c("t1_team", "t2_team", "type", "season")) %>% 
+  select(-c(type)) %>% 
+  mutate(t1_ml_odds = ifelse(t1_home == 1, home_ml_odds, away_ml_odds),
+         t1_spread_val = ifelse(t1_home == 1, home_spread_val, away_spread_val),
+         t1_spread_odds = ifelse(t1_home == 1, home_spread_odds, away_spread_odds),
+         t2_ml_odds = ifelse(t1_home == 0, home_ml_odds, away_ml_odds),
+         t2_spread_val = ifelse(t1_home == 0, home_spread_val, away_spread_val),
+         t2_spread_odds = ifelse(t1_home == 0, home_spread_odds, away_spread_odds)) %>% 
+  select(-c(home_ml_odds, away_ml_odds, home_spread_val, away_spread_val, home_spread_odds, away_spread_odds)) %>% 
+  mutate(t1_spread_odds = ifelse(is.na(t1_spread_odds), -110, t1_spread_odds),
+         t2_spread_odds = ifelse(is.na(t2_spread_odds), -110, t2_spread_odds),
+         over_odds = ifelse(is.na(over_odds), -110, over_odds),
+         under_odds = ifelse(is.na(under_odds), -110, under_odds))
+
+
+
+
+
+#### FOR ML MODEL, THROW OUT GAMES WHERE BOOK SPREAD NOT CLOSE TOGETHER, MAYBE 3-5 P1 RANGE
+
+
+# View(model_prepped_moved %>% filter(neutral_site != 1, season>=2021) %>% select(t1_book_spread, t1_spread_val) %>% mutate(diff = abs(t1_spread_val-t1_book_spread)) %>% group_by(diff) %>% summarize(n = n(), perc = round(n()/dim(model_prepped_moved %>% filter(season>=2021&neutral_site!=1))[1],2)))
+# > 
+# > View(model_prepped_moved %>% filter(neutral_site != 1, season>=2021) %>% select(t1_book_spread, t1_spread_val, t1_team, t2_team, season, t1_ml_odds) %>% mutate(diff = abs(t1_spread_val-t1_book_spread)))
+# 
+
+```
+
+
+
+### Arrange Data
+```{r}
+
+# dummy cols 
+model_prepped_dummy = join_bet %>% 
+  rename(pc = precipitation_code) %>% 
+  dummy_cols('pc') %>% 
+  select(-pc)
+
+
+# rearrange col order (makes easier when looking at predictions later)
+move_cols = c("pc_no_rain", "pc_light_rain", "pc_moderate_rain", "pc_heavy_rain", "week", "neutral_site", "t1_home", "t2_home", "conference_game", "season", "t1_point_diff", "t1_win", "total_points", "t1_actual_cover", "actual_over", "t1_points", "t2_points", "game_id", "t1_team", "t2_team", "t1_conference", "t2_conference", "completed", "t1_ml_odds","t2_ml_odds", "t1_spread_val","t1_spread_odds", "t2_spread_val", "t2_spread_odds", "over_odds", "over_val", "under_odds", "under_val")
+
+
+
+model_prepped_moved = model_prepped_dummy[, c(setdiff(names(model_prepped_dummy), move_cols), move_cols)]
+
+```
+
+
+## PD Data
+```{r}
+
+pd_vars = scan("pd_vars.txt", what = "character", sep = "\n")
+
+model_prepped_moved_pd = model_prepped_moved %>% select(all_of(pd_vars))
+
+model_prepped_moved_pd = model_prepped_moved_pd %>% select(-c(grep("rain", names(model_prepped_moved_pd)))) 
+
+model_prepped_moved_pd = model_prepped_moved_pd %>% select(-c(wind_speed))
+
+```
+
+
+
+
+### Omit Remaining NA Rows
+```{r}
+# omit NA cols (only one thousand)
+model_prepped_omit_pd = na.omit(model_prepped_moved_pd) 
+
+
+```
+
+
+
+### Run Model 
+
+```{r}
+
+
+
+
+
+# function to run model on old data
+
+model_func = function(oc_var, num_predictors, data, yr_length, real_yr, real_wk, initial_yr, initial_wk, params){
+  
+  
+  # ARGS:
+  #
+  # oc_var = outcome variable of model
+  # num_predictors = col number range of predictors
+  # data = dataframe used
+  # yr_length = window size
+  # real_yr = this season
+  # real_wk = this week
+  # initial_yr = starting year
+  # params = xgboost parameters (as list)
+  #
+  # RETURNS: dataframe of predictions from the specified period
+  
+  
+
+    set.seed(844)
+  
+  
+    # what years are we looking at
+    year_range = c((initial_yr + yr_length):real_yr)
+    
+    for (yr in year_range){
+      
+      print(yr)
+      iter = 0
+      
+      current_yr = yr
+      start_yr = current_yr - yr_length
+      
+      
+      
+      # for each year, what weeks are available in data
+      if (current_yr %in% c(2010)){
+        week_range = c(4:16, 20, 22, 23)
+      } else if (current_yr <= 2023) {
+        week_range = c(4:15, 20, 22, 23)
+      } else{
+        week_range = c(4:15, 20:23)
+      }
+      
+      # stop at current year and week when reached
+      if (current_yr == real_yr){
+        week_range = week_range[week_range<=real_wk]
+      }
+      if (current_yr == initial_yr){
+        week_range = week_range[week_range>=initial_wk]
+      }
+      
+      
+      
+      # for each week, run the model with rolling window
+      for (wk in week_range){
+        
+        print(wk)
+        iter = iter + 1
+        
+        current_wk = wk
+        
+        # train is from specified window
+        train = data %>% 
+          filter((season == start_yr & week > current_wk) | (season > start_yr & season < current_yr) | (season == current_yr & week < current_wk))
+        
+        # test is from this week only
+        test = data %>% 
+          filter(season == current_yr & week == current_wk)
+        
+        
+        names(train)[grep(oc_var, names(train))] = "oc_var"
+        names(test)[grep(oc_var, names(test))] = "oc_var"
+        
+        
+            # Create training matrix
+        train_matrix = xgb.DMatrix(data = as.matrix(train[,num_predictors]), 
+                                      label = as.integer(train$oc_var))
+        
+        # Create training matrix
+        test_matrix = xgb.DMatrix(data = as.matrix(test[,num_predictors]), 
+                                      label = as.numeric(test$oc_var))
+        
+        
+    
+        
+        # call xgboost
+        new_params = c(params, data = train_matrix)
+        model = do.call(xgboost, new_params)
+        
+        
+        
+        
+        # predictions
+        preds = predict(model, test_matrix)
+        new_df = cbind.data.frame(preds, oc_var = test$oc_var, game_id = test$game_id, t1_team = test$t1_team, t2_team = test$t2_team)
+        
+        
+        if (yr == initial_yr + yr_length & iter == 1){
+          pred_df = new_df
+        } else{
+          pred_df = bind_rows(pred_df, new_df)
+        }
+        
+        
+      }
+      
+    }
+    
+    
+    return(pred_df)
+    
+}    
+
+```
+
+
+```{r}
+
+
+# tuned parameters
+parameters = list(eta = .05,
+              max.depth = 3, # Set max depth
+              min_child_weight = 7, # Set minimum number of samples in node to split
+              gamma = .05, # Set minimum loss reduction for split
+              subsample = .8, # Set proportion of training data to use in tree
+              colsample_bytree = 1,
+              
+              
+              nrounds = 110 , # Set number of rounds
+              early_stopping_rounds = 30, # Set number of rounds to stop at if there is no improvement)
+              
+              verbose = 0, # 1 - Prints out fit
+              nthread = 1,
+              
+              eval_metric = "rmse")
+
+# the pd model
+pd_model = model_func("t1_point_diff", 1:218, model_prepped_omit_pd, 6, 2024, 24, 2015, 1, parameters)
+
+
+```
+
+
+
+
+
+```{r}
+
+
+pred_dat_final_pd = pd_model
+
+
+# modify col names and calculate predicted scores
+pred_dat_final_pd = pred_dat_final_pd %>% 
+  rename(pred_t1_point_diff = preds,
+         actual_t1_point_diff = oc_var)
+
+
+
+
+### SWITCH TO HOME/AWAY EVENTUALLY
+
+pred_dat_final_pd$id_max = pmax(pred_dat_final_pd$t1_team, pred_dat_final_pd$t2_team)
+pred_dat_final_pd$id_min = pmin(pred_dat_final_pd$t1_team, pred_dat_final_pd$t2_team)
+
+
+
+merge_preds = pred_dat_final_pd %>% 
+  mutate(pred_t1_point_diff = ifelse(t1_team == id_max,pred_t1_point_diff, 
+                                     pred_t1_point_diff*-1)) %>% 
+  group_by(game_id) %>% 
+  summarise(pred_t1_point_diff = mean(pred_t1_point_diff))
+
+
+
+
+pred_dat_final_pd = pred_dat_final_pd %>% 
+  filter(t1_team == id_max) %>% 
+  select(-c(pred_t1_point_diff)) %>% 
+  left_join(merge_preds, by = c("game_id"))%>% 
+  mutate(pred_t1_point_diff = round(pred_t1_point_diff, 2)) %>% 
+  select(-c(id_min, id_max))
+
+
+
+
+
+
+```
+
+
+```{r}
+
+info_lookup = join_bet %>% select(t1_team, t2_team, game_id, week, season, t1_home, neutral_site, t1_conference, t2_conference, t1_actual_cover, over_odds, under_odds, over_val, under_val, t1_ml_odds, t1_spread_val, t1_spread_odds, t2_ml_odds, t2_spread_val, t2_spread_odds)
+
+
+
+pred_dat_final_all = left_join(pred_dat_final_pd, info_lookup, by = c("t1_team", "t2_team", "game_id")) 
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<br>
+
+
+# *Future Predictions*
+
+### Load New Data
+```{r}
+
+# updated dataset with new test data
+cfb_data_updated = read.csv("cfb_project_data_prep_file_updated.csv")[,-1]
+
+# current season and week
+current_season = max(cfb_data_updated$season)
+current_week = 15
+  #max(cfb_data_updated[cfb_data_updated$season == current_season,]$week)
+
+
+```
+
+
+### Filter
+
+```{r}
+
+# filter for completed games or next week's game
+new_weeks = cfb_data_updated %>% 
+  filter(t1_division == 'fbs' & t2_division == 'fbs')%>% 
+  select(-c(t1_division, t2_division)) %>% 
+  filter(completed == TRUE | (season == current_season & week == current_week))
+
+```
+
+
+### Re-do Data Prep
+
+```{r}
+
+# redo data prep
+
+# treat NAs
+model_prepped_orig_nw = new_weeks %>% 
+  select(-c(completed)) %>% # get rid of completed column
+  filter(!is.na(t1_rol_pa_pg_l3) & !is.na(t2_rol_pa_pg_l3) & !is.na(t1_.rol_wpa_pp_def)
+         & !is.na(t2_.rol_wpa_pp_def)) # get rid of games w/o previous game info data
+
+
+  
+
+response_holder_nw = model_prepped_orig_nw %>% 
+  select(c(t1_point_diff, total_points, t1_win, season, week, t1_team, t2_team, game_id))
+
+model_prepped_omit_nw = model_prepped_orig_nw %>% 
+  select(-c(t1_point_diff, total_points, t1_win, season, week, t1_team, t2_team, game_id))
+
+
+
+
+model_prepped_nw = model_prepped_omit_nw %>% 
+  dummy_cols('t1_conference') %>% 
+  dummy_cols('t2_conference') %>% 
+  select(-c(t1_conference, t2_conference, season_type, t1_points, t2_points)) %>% 
+  mutate(neutral_site = ifelse(neutral_site == TRUE, 1, 0)) %>% 
+  mutate(conference_game = ifelse(conference_game == TRUE, 1, 0))
+
+
+
+
+model_prepped_nw$season = response_holder_nw$season
+model_prepped_nw$week = response_holder_nw$week
+model_prepped_nw$t1_team = response_holder_nw$t1_team 
+model_prepped_nw$t2_team = response_holder_nw$t2_team
+model_prepped_nw$t1_point_diff = response_holder_nw$t1_point_diff
+model_prepped_nw$total_points = response_holder_nw$total_points
+model_prepped_nw$t1_win = response_holder_nw$t1_win
+
+
+
+
+
+
+# Create training matrix
+pd_matrix_nw = xgb.DMatrix(data = as.matrix(model_prepped_nw[,1:109]))
+
+
+
+```
+
+### Use Model to Predict New Test Data Games
+
+```{r}
+# Point Diff
+
+boost_preds_final_nw <- predict(bst_final, pd_matrix_nw) # Create predictions for xgboost model
+
+pred_dat_final_nw <- cbind.data.frame(model_prepped_nw$t1_team, model_prepped_nw$t2_team, boost_preds_final_nw, model_prepped_nw$t1_point_diff, model_prepped_nw$week, model_prepped_nw$season, model_prepped_nw$t1_home)
+
+
+# modify col names and calculate predicted scores
+pred_dat_final_nw = pred_dat_final_nw %>% 
+  rename(team1 = `model_prepped_nw$t1_team`,
+         team2 = `model_prepped_nw$t2_team`,
+         pred_t1_point_diff = boost_preds_final_nw,
+         actual_t1_point_diff = `model_prepped_nw$t1_point_diff`,
+         week = `model_prepped_nw$week`,
+         season = `model_prepped_nw$season`,
+         t1_home = `model_prepped_nw$t1_home`) %>% 
+  mutate(pred_t1_win = ifelse(pred_t1_point_diff > 0, 1, 0),
+         actual_t1_win = ifelse(actual_t1_point_diff > 0, 1, 0),
+         pred_t1_point_diff = round(pred_t1_point_diff, 2)) 
+
+
+
+```
+
+### Combine All Test Predictions
+
+```{r}
+all_predicted = bind_rows(pred_dat_final, pred_dat_final_nw)
+```
+
+
+<br>
+
+# *Betting Lines*
+
+
+
+```{r}
+
+# # Calculate the percentage of NAs in each column
+# na_rate <- colMeans(is.na(pred_odds_comb %>% filter(season>2015)))
+# 
+# # Create a new data frame with the NA percentages
+# df_na_percentage <- data.frame(
+#   column = colnames(pred_odds_comb),
+#   na_rate = na_rate
+# )
+# 
+# # display
+# df_na_percentage %>% 
+#   arrange(desc(na_rate))
+
+
+
+
+```
+
+```{r}
+
+# create data frame for app's betting analysis
+app_historical_df = pred_odds_comb %>% 
+  # just have t1 be home for simplicity
+  filter(t1_home == 1) %>% 
+  # which betting lines are we using
+  select(-c(away_ml_money_15, away_ml_tickets_15, home_ml_money_15, home_ml_tickets_15, away_spread_money_15, away_spread_tickets_15, home_spread_tickets_15, home_spread_money_15)) %>% 
+  # don't need anymore, know that t1 is home
+  select(-t1_home) %>% 
+  # specific col names 
+  mutate(book_home_ml_odds = home_ml_odds_15,
+         book_away_ml_odds = away_ml_odds_15,
+         book_home_spread = home_spread_value_15,
+         book_home_spread_odds = home_spread_odds_15,
+         book_away_spread = away_spread_value_15,
+         book_away_spread_odds = away_spread_odds_15
+         ) %>% 
+  # get rid of old names
+  select(-c(away_spread_value_15, home_ml_odds_15, away_ml_odds_15, home_spread_value_15, 
+            home_spread_odds_15, away_spread_odds_15)) %>% 
+  # rename more stuff
+  rename(pred_home_point_diff = pred_t1_point_diff,
+         home_team = team1,
+         away_team = team2,
+         actual_home_point_diff = actual_t1_point_diff,
+         pred_home_win = pred_t1_win,
+         actual_home_win = actual_t1_win) %>% 
+  # change point diff to spread format
+  mutate(pred_home_spread = pred_home_point_diff * -1,
+         actual_home_spread = actual_home_point_diff * -1) %>%
+  # get rid of point diff cols
+  select(-c(pred_home_point_diff, actual_home_point_diff)) %>% 
+  # cols for if predicted and actual results covered for home
+  mutate(pred_home_cover = ifelse(pred_home_spread > book_home_spread, 1, 0),
+         actual_home_cover = ifelse(actual_home_spread > book_home_spread, 1, 0)) %>% 
+  # if we got spread correct and our return
+  mutate(spread_correct = ifelse(pred_home_cover == actual_home_cover, 1, 0),
+         spread_winnings = ifelse(spread_correct == 1 & pred_home_cover == 1 & book_home_spread_odds > 0, 
+                                  1 + abs(book_home_spread_odds)/100,
+                            ifelse(spread_correct == 1 & pred_home_cover == 1,
+                                   1 + 100/abs(book_home_spread_odds),
+                            ifelse(spread_correct == 1 &  book_away_spread_odds > 0, 
+                                  1 + abs(book_away_spread_odds)/100,
+                            ifelse(spread_correct == 1,
+                                   1 + 100/abs(book_away_spread_odds),
+                            0))))) %>% 
+  # if we got ml correct and our return 
+  mutate(ml_correct = ifelse(pred_home_win == actual_home_win, 1, 0),
+         ml_winnings = ifelse(ml_correct == 1 & pred_home_win == 1 & book_home_ml_odds > 0, 
+                                  1 + abs(book_home_ml_odds)/100,
+                            ifelse(ml_correct == 1 & pred_home_win == 1,
+                                   1 + 100/abs(book_home_ml_odds),
+                            ifelse(ml_correct == 1 &  book_away_ml_odds > 0, 
+                                  1 + abs(book_away_ml_odds)/100,
+                            ifelse(ml_correct == 1,
+                                   1 + 100/abs(book_away_ml_odds),
+                            0))))) %>% 
+  # average bettor's spread returns
+  mutate(naive_spread_winnings = ifelse(actual_home_cover == 1 & book_home_spread_odds > 0, 
+                                  (1 + abs(book_home_spread_odds)/100)/2,
+                            ifelse(actual_home_cover == 1,
+                                   (1 + 100/abs(book_home_spread_odds))/2,
+                            ifelse(book_away_spread_odds > 0, 
+                                  (1 + abs(book_away_spread_odds)/100)/2, 
+                            (1 + 100/abs(book_away_spread_odds))/2
+                            )))) %>%
+  # average bettor's ml returns
+  mutate(home_favorite = ifelse(book_home_ml_odds < book_away_ml_odds, 1, 0)) %>% 
+  mutate(naive_ml_winnings = ifelse(home_favorite == actual_home_win & actual_home_win == 1 & book_home_ml_odds >0, 
+                                  (1 + abs(book_home_ml_odds)/100),
+                            ifelse(home_favorite == actual_home_win & actual_home_win == 1 & book_home_ml_odds <0,
+                                   (1 + 100/abs(book_home_ml_odds)),
+                            ifelse(home_favorite == actual_home_win & actual_home_win == 0 & book_away_ml_odds >0,
+                                   (1 + abs(book_away_ml_odds)/100),
+                            ifelse(home_favorite == actual_home_win & actual_home_win == 0 & book_away_ml_odds <0,
+                                   (1 + 100/abs(book_away_ml_odds)),
+                            ifelse(abs(home_favorite - actual_home_win) == 1, 
+                                  0,
+                                  NA)))))) %>% 
+  # how much we predicted the book was off
+  mutate(pred_vs_book_spread = abs(pred_home_spread - book_home_spread)) %>% 
+  select(-home_favorite)
+  
+
+
+# check out overall winning to make sure they match with app
+
+# sum(app_historical_df$ml_winnings, na.rm = TRUE)
+# length(filter(app_historical_df, !is.na(ml_winnings))$ml_winnings)
+# # # 
+# # # 
+# # sum(app_historical_df$spread_winnings, na.rm = TRUE)
+# # length(filter(app_historical_df, !is.na(spread_winnings))$spread_winnings)
+# # # 
+# # # 
+# # # 
+# # # 
+# sum(app_historical_df$naive_ml_winnings, na.rm = TRUE)
+# length(filter(app_historical_df, !is.na(naive_ml_winnings))$naive_ml_winnings)
+# 
+# 
+# sum(app_historical_df$naive_spread_winnings, na.rm = TRUE)
+# length(filter(app_historical_df, !is.na(naive_spread_winnings))$spread_winnings)
+# 
+# 
+# #length(na.omit(app_historical_df)$week)
+# 
+# 
+# View(filter(app_historical_df, (is.na(naive_ml_winnings)&(!is.na(ml_winnings))) | (is.na(ml_winnings)&(!is.na(naive_ml_winnings)))))
+# 
+# 
+# View(filter(app_historical_df, is.na(ml_correct)))
+
+
+```
+
+
+```{r}
+# write app_historical_df to a csv
+#write.csv(app_historical_df, "app_historical_df.csv", row.names = FALSE, quote = FALSE, fileEncoding = "utf-8")
+
+
+
+```
+
+<br>
+
+# *Theoretical Games*
+
+```{r}
+# read in theoretical games 
+theor_games_orig = read.csv("theoretical_games.csv")
+```
+
+### Filter
+
+```{r}
+
+# unselect excess cols
+theor_weeks = theor_games_orig %>% 
+  select(-c(t1_division, X)) 
+
+```
+
+
+### Re-do Data Prep
+
+```{r}
+
+# redo data prep
+
+# treat NAs
+model_prepped_orig_tw = theor_weeks %>% 
+  select(-c(completed)) %>% # get rid of completed column
+  filter(!is.na(t1_rol_pa_pg_l3) & !is.na(t1_.rol_wpa_pp_def)) # get rid of games w/o previous game info data
+
+
+  
+
+response_holder_tw = model_prepped_orig_tw %>% 
+  select(c(t1_point_diff, total_points, t1_win, season, week, t1_team))
+
+# getting rid of neutral site and conf game this time too, will calculate in python
+model_prepped_omit_tw = model_prepped_orig_tw %>% 
+  select(-c(t1_point_diff, total_points, t1_win, season, week, t1_team, game_id, neutral_site, conference_game))
+
+
+
+
+model_prepped_tw = model_prepped_omit_tw %>% 
+  dummy_cols('t1_conference') %>% 
+  select(-c(season_type, t1_points)) %>% 
+  mutate(neutral_site = NA) %>% 
+  mutate(conference_game = NA)
+
+
+
+
+model_prepped_tw$season = response_holder_tw$season
+model_prepped_tw$week = response_holder_tw$week
+model_prepped_tw$t1_team = response_holder_tw$t1_team
+model_prepped_tw$t1_point_diff = response_holder_tw$t1_point_diff
+model_prepped_tw$total_points = response_holder_tw$total_points
+model_prepped_tw$t1_win = response_holder_tw$t1_win
+model_prepped$t1_team = response_holder$t1_team
+
+
+
+```
+
+```{r}
+# write theoretical data out
+#write.csv(model_prepped_tw, "theoretical_prepped.csv")
+
+# sample of how cols should be when wrangled in python
+#write.csv(model_prepped_nw[1,1:109], "sample_data.csv")
+```
+
+
+# *Team Logos*
+
+```{r}
+
+# load team info
+team_info = cfbd_team_info()
+
+# select cols
+team_info = team_info %>% 
+  select(school, color, logo)
+
+# write truncated result out
+#write.csv(team_info, "team_info.csv")
+```
+
+
+
+
+
+
+
+
+
+
+
+
