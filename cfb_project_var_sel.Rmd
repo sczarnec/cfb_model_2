@@ -51,7 +51,8 @@ current_season = 2024
 fbs_only = cfb_model_data %>% 
   filter(t1_division == "fbs" & t2_division == "fbs") %>% 
   filter(week > 3,
-         season > 2014)%>% 
+         season > 2014,
+         season < 2021)%>% 
   select(-c(t1_division, t2_division)) %>% 
   mutate(conference_game = ifelse(conference_game, 1, 0))
   
@@ -410,7 +411,8 @@ imp_mat_pd_v2 <- xgb.importance(model = bst_final_pd_v2)
 
 ```{r}
 
-pd_var_list_orig = unique(c(imp_mat_pd_v1[1:3]$Feature, imp_mat_pd_v2[1:3]$Feature))
+
+pd_var_list_orig = unique(c(imp_mat_pd_v1[1:100]$Feature, imp_mat_pd_v2[1:100]$Feature))
 
 list_matches = unname(sapply(pd_var_list_orig, function(x) gsub("^t1", "t2", x)))
 
@@ -419,8 +421,7 @@ pd_var_list_final = unique(c(pd_var_list_orig, list_matches, move_cols))
 
 pd_var_list_final = pd_var_list_final[-c(grep("t2_book_spread", pd_var_list_final))]
 
-# writeLines(pd_var_list_final, "pd_vars.txt")
-# writeLines(move_cols, "move_cols.txt")
+
 
 
 

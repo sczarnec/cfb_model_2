@@ -114,7 +114,7 @@ model_prepped_dummy = model_prepped_orig %>%
 # rearrange col order (makes easier when looking at predictions later)
 move_cols = c("pc_no_rain", "pc_light_rain", "pc_moderate_rain", "pc_heavy_rain", "week", "neutral_site", "t1_home", "t2_home", "conference_game", "season", "t1_point_diff", "t1_win", "total_points", "t1_actual_cover", "actual_over", "t1_points", "t2_points", "game_id", "t1_team", "t2_team", "t1_conference", "t2_conference", "completed")
 
-pd_vars = scan("pd_vars.txt", what = "character", sep = "\n")
+pd_vars = scan("test_pd_vars.txt", what = "character", sep = "\n")
 
 model_prepped_moved = model_prepped_dummy[, c(setdiff(names(model_prepped_dummy), move_cols), move_cols)]
 
@@ -125,11 +125,11 @@ model_prepped_moved = model_prepped_dummy[, c(setdiff(names(model_prepped_dummy)
 ## PD Data
 ```{r}
 
-model_prepped_moved_pd = model_prepped_moved %>% select(pd_vars)
+model_prepped_moved_pd = model_prepped_moved %>% select(pd_vars, move_cols)
 
 model_prepped_moved_pd = model_prepped_moved_pd %>% select(-c(grep("rain", names(model_prepped_moved_pd)))) 
 
-model_prepped_moved_pd = model_prepped_moved_pd %>% select(-c(wind_speed))
+#model_prepped_moved_pd = model_prepped_moved_pd %>% select(-c(wind_speed))
 
 ```
 
@@ -180,7 +180,7 @@ parameters = list(eta = .05,
 
 # oc_var = "t1_point_diff"
 # 
-# num_predictors = 219
+# num_predictors = 196
 # 
 # data = model_prepped_omit_pd
 # 
@@ -216,6 +216,8 @@ model_func = function(oc_var, num_predictors, data, yr_length, real_yr, real_wk,
       
       if (current_yr %in% c(2010)){
         week_range = c(4:16, 20, 22, 23)
+      } else if (current_yr == 2020){
+        week_range = c(5:15,20,22,23)
       } else if (current_yr <= 2023) {
         week_range = c(4:15, 20, 22, 23)
       } else{
@@ -246,11 +248,11 @@ model_func = function(oc_var, num_predictors, data, yr_length, real_yr, real_wk,
         
         
             # Create training matrix
-        train_matrix = xgb.DMatrix(data = as.matrix(train[,num_predictors]), 
+        train_matrix = xgb.DMatrix(data = as.matrix(train[,1:num_predictors]), 
                                       label = as.integer(train$oc_var))
         
         # Create training matrix
-        test_matrix = xgb.DMatrix(data = as.matrix(test[,num_predictors]), 
+        test_matrix = xgb.DMatrix(data = as.matrix(test[,1:num_predictors]), 
                                       label = as.numeric(test$oc_var))
         
         
@@ -282,19 +284,21 @@ model_func = function(oc_var, num_predictors, data, yr_length, real_yr, real_wk,
     
 }    
 
+```
 
+```{r}
 
-rw_8 = model_func("t1_point_diff", 219, model_prepped_omit_pd, 8, 2024, 23, 2015, parameters)
+rw_8 = model_func("t1_point_diff", 197, model_prepped_omit_pd, 8, 2024, 23, 2015, parameters)
 
-rw_7 = model_func("t1_point_diff", 219, model_prepped_omit_pd, 7, 2024, 23, 2015, parameters)
+rw_7 = model_func("t1_point_diff", 197, model_prepped_omit_pd, 7, 2024, 23, 2015, parameters)
 
-rw_6 = model_func("t1_point_diff", 219, model_prepped_omit_pd, 6, 2024, 23, 2015, parameters)
+rw_6 = model_func("t1_point_diff", 197, model_prepped_omit_pd, 6, 2024, 23, 2015, parameters)
 
-rw_5 = model_func("t1_point_diff", 219, model_prepped_omit_pd, 5, 2024, 23, 2015, parameters)
+rw_5 = model_func("t1_point_diff", 197, model_prepped_omit_pd, 5, 2024, 23, 2015, parameters)
 
-rw_4 = model_func("t1_point_diff", 219, model_prepped_omit_pd, 4, 2024, 23, 2015, parameters)
+rw_4 = model_func("t1_point_diff", 197, model_prepped_omit_pd, 4, 2024, 23, 2015, parameters)
 
-rw_3 = model_func("t1_point_diff", 219, model_prepped_omit_pd, 3, 2024, 23, 2015, parameters)
+rw_3 = model_func("t1_point_diff", 197, model_prepped_omit_pd, 3, 2024, 23, 2015, parameters)
 
 
 # write.csv(rw_8, "rw_8.csv")
@@ -303,13 +307,13 @@ rw_3 = model_func("t1_point_diff", 219, model_prepped_omit_pd, 3, 2024, 23, 2015
 # write.csv(rw_5, "rw_5.csv")
 # write.csv(rw_4, "rw_4.csv")
 # write.csv(rw_3, "rw_3.csv")
-
-rw_8 = read.csv("rw_8.csv")[,-1]
-rw_7 = read.csv("rw_7.csv")[,-1]
-rw_6 = read.csv("rw_6.csv")[,-1]
-rw_5 = read.csv("rw_5.csv")[,-1]
-rw_4 = read.csv("rw_4.csv")[,-1]
-rw_3 = read.csv("rw_3.csv")[,-1]
+# 
+# rw_8 = read.csv("rw_8.csv")[,-1]
+# rw_7 = read.csv("rw_7.csv")[,-1]
+# rw_6 = read.csv("rw_6.csv")[,-1]
+# rw_5 = read.csv("rw_5.csv")[,-1]
+# rw_4 = read.csv("rw_4.csv")[,-1]
+# rw_3 = read.csv("rw_3.csv")[,-1]
 
 
 
@@ -328,6 +332,7 @@ join_df = model_prepped_omit_pd %>%
 
 df_list <- list("rw_8" = rw_8, "rw_7" = rw_7, "rw_6" = rw_6, "rw_5" = rw_5, "rw_4" = rw_4, "rw_3" = rw_3)
 it = 0
+
 
 for (name in names(df_list)) {
   it = it+1
