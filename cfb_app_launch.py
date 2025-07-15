@@ -50,12 +50,12 @@ def welcome_page():
           """
           <style>
           .custom-font {
-              font-size: 24px;
+              font-size: 20px;
           }
           </style>
           <div class="custom-font">Welcome! This site is built around the use of an XGBoost model to predict
-          point differential for FBS College Football games. The goal is to predict future outcomes for fun
-          and try to beat the accuracy of sportsbook spread models.</div>
+          point differential, win probability, and total points for FBS College Football games. 
+          The goal is to predict future outcomes for fun and try to beat the accuracy of sportsbook models.</div>
           """,
           unsafe_allow_html=True
       )
@@ -67,15 +67,33 @@ def welcome_page():
           """
           <style>
           .custom-font {
-              font-size: 24px;
+              font-size: 20px;
           }
           </style>
-          <div class="custom-font">Currently, we are using Version 1 of our model. We are in the process of
-          improving it by adding more predictors and re-tuning  for v2. It is not advised to use the model for
-          betting yet.</div>
+          <div class="custom-font">As of 2025, we are now using model v2.0. This model uses a rolling window
+          to re-train and re-test performance each week, allowing it to be adaptable. This also lets us examine historical
+          performance on all available games. </div>
           """,
           unsafe_allow_html=True
       )
+
+
+  st.write("  ")
+  st.write("  ")
+      
+  st.markdown(
+          """
+          <style>
+          .custom-font {
+              font-size: 20px;
+          }
+          </style>
+          <div class="custom-font">As a note, this was built for entertainment purposes. While it's
+          fun to use this information to try to beat the books, performance is merely estimated, not guaranteed.
+          We are not responsible for bet outcomes.</div>
+          """,
+          unsafe_allow_html=True
+      ) 
       
   st.write("  ")
   st.write("  ")
@@ -92,6 +110,10 @@ def welcome_page():
           """,
           unsafe_allow_html=True
       )
+  
+   
+  
+
 
 
 
@@ -466,14 +488,15 @@ def playoff_page():
     
       # Create select boxes with specific default values
       default_values = ["Oregon", "Georgia", "Boise State", "Arizona State", "Texas", "Penn State", 
-                      "Notre Dame", "Ohio State", "Tennessee", "Indiana", "SMU", "Clemson"]
+                      "Notre Dame", "Ohio State", "Tennessee", "Illinois", "SMU", "Clemson"]
 
       seeds = []
       for value in default_values:
           
         try:
             # Find the index of the default value
-            index = theor_prepped["t1_team"].tolist().index(value)
+            unique_teams = sorted(theor_prepped["t1_team"].dropna().unique())
+            index = unique_teams.index(value)
         except ValueError:
             # If the value is not found, use a fallback index (e.g., -1 or 0)
             index = -1  # You can change this to 0 if you want a valid index
@@ -481,18 +504,18 @@ def playoff_page():
     
       
       # select boxes
-      seed1 = st.selectbox("1 Seed", theor_prepped["t1_team"], index = seeds[0])
-      seed2 = st.selectbox("2 Seed", theor_prepped["t1_team"], index = seeds[1])
-      seed3 = st.selectbox("3 Seed", theor_prepped["t1_team"], index = seeds[2])
-      seed4 = st.selectbox("4 Seed", theor_prepped["t1_team"], index = seeds[3])
-      seed5 = st.selectbox("5 Seed", theor_prepped["t1_team"], index = seeds[4])
-      seed6 = st.selectbox("6 Seed", theor_prepped["t1_team"], index = seeds[5])
-      seed7 = st.selectbox("7 Seed", theor_prepped["t1_team"], index = seeds[6])
-      seed8 = st.selectbox("8 Seed", theor_prepped["t1_team"], index = seeds[7])
-      seed9 = st.selectbox("9 Seed", theor_prepped["t1_team"], index = seeds[8])
-      seed10 = st.selectbox("10 Seed", theor_prepped["t1_team"], index = seeds[9])
-      seed11 = st.selectbox("11 Seed", theor_prepped["t1_team"], index = seeds[10])
-      seed12 = st.selectbox("12 Seed", theor_prepped["t1_team"], index = seeds[11])
+      seed1 = st.selectbox("1 Seed", sorted(theor_prepped["t1_team"].dropna().unique()), index = seeds[0])
+      seed2 = st.selectbox("2 Seed", sorted(theor_prepped["t1_team"].dropna().unique()), index = seeds[1])
+      seed3 = st.selectbox("3 Seed", sorted(theor_prepped["t1_team"].dropna().unique()), index = seeds[2])
+      seed4 = st.selectbox("4 Seed", sorted(theor_prepped["t1_team"].dropna().unique()), index = seeds[3])
+      seed5 = st.selectbox("5 Seed", sorted(theor_prepped["t1_team"].dropna().unique()), index = seeds[4])
+      seed6 = st.selectbox("6 Seed", sorted(theor_prepped["t1_team"].dropna().unique()), index = seeds[5])
+      seed7 = st.selectbox("7 Seed", sorted(theor_prepped["t1_team"].dropna().unique()), index = seeds[6])
+      seed8 = st.selectbox("8 Seed", sorted(theor_prepped["t1_team"].dropna().unique()), index = seeds[7])
+      seed9 = st.selectbox("9 Seed", sorted(theor_prepped["t1_team"].dropna().unique()), index = seeds[8])
+      seed10 = st.selectbox("10 Seed", sorted(theor_prepped["t1_team"].dropna().unique()), index = seeds[9])
+      seed11 = st.selectbox("11 Seed", sorted(theor_prepped["t1_team"].dropna().unique()), index = seeds[10])
+      seed12 = st.selectbox("12 Seed", sorted(theor_prepped["t1_team"].dropna().unique()), index = seeds[11])
       
       
       
@@ -510,7 +533,10 @@ def playoff_page():
         if "override_fr1" not in st.session_state:
             st.session_state.override_fr1 = False
     
-        results_fr1 = game_predictor_func(seed8, seed9, neutral_site_ind_fr)
+        results_fr1 = theor_prepped[
+            (theor_prepped["t1_team"] == seed8) &
+            (theor_prepped["t2_team"] == seed9) &
+            (theor_prepped["t1_home"] == 1)]
     
         # Display the header for the game
         st.markdown(f"""
@@ -528,27 +554,27 @@ def playoff_page():
         # Conditional Display of Matchup based on session_state
         if st.session_state.override_fr1 == True:
             
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fr1["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fr1.iloc[0]["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_fr1["winning_color"]}; text-align:center;">
+                <div style="font-size:15px; font-weight:bold; color:{results_fr1.iloc[0]["losing_color"]}; text-align:center;">
                       
                 </div>
             """, unsafe_allow_html=True)
             
-            fr1_winner = results_fr1["losing_team"]
+            fr1_winner = results_fr1.iloc[0]["losing_team"]
             
         else:
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fr1["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fr1.iloc[0]["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_fr1["winning_color"]}; text-align:center;">
-                    by {results_fr1["tgp_result_wt"]}
+                <div style="font-size:15px; font-weight:bold; color:{results_fr1.iloc[0]["winning_color"]}; text-align:center;">
+                    by {results_fr1.iloc[0]["point_margin"]}
                 </div>
             """, unsafe_allow_html=True)
             
-            fr1_winner = results_fr1["winning_team"]
+            fr1_winner = results_fr1.iloc[0]["winning_team"]
         
             
         # Place the checkbox at the bottom of the page (after everything else)
@@ -563,8 +589,11 @@ def playoff_page():
         # FR2
         if "override_fr2" not in st.session_state:
             st.session_state.override_fr2 = False
-    
-        results_fr2 = game_predictor_func(seed7, seed10, neutral_site_ind_fr)
+
+        results_fr2 = theor_prepped[
+            (theor_prepped["t1_team"] == seed7) &
+            (theor_prepped["t2_team"] == seed10) &
+            (theor_prepped["t1_home"] == 1)]    
     
         # Display the header for the game
         st.markdown(f"""
@@ -582,27 +611,27 @@ def playoff_page():
         # Conditional Display of Matchup based on session_state
         if st.session_state.override_fr2 == True:
             
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fr2["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fr2.iloc[0]["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_fr2["winning_color"]}; text-align:center;">
+                <div style="font-size:15px; font-weight:bold; color:{results_fr2.iloc[0]["winning_color"]}; text-align:center;">
                       
                 </div>
             """, unsafe_allow_html=True)
             
-            fr2_winner = results_fr2["losing_team"]
+            fr2_winner = results_fr2.iloc[0]["losing_team"]
             
         else:
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fr2["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fr2.iloc[0]["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_fr2["winning_color"]}; text-align:center;">
-                    by {results_fr2["tgp_result_wt"]}
+                <div style="font-size:15px; font-weight:bold; color:{results_fr2.iloc[0]["winning_color"]}; text-align:center;">
+                    by {results_fr2.iloc[0]["point_margin"]}
                 </div>
             """, unsafe_allow_html=True)
             
-            fr2_winner = results_fr2["winning_team"]
+            fr2_winner = results_fr2.iloc[0]["winning_team"]
         
             
         # Place the checkbox at the bottom of the page (after everything else)
@@ -618,8 +647,11 @@ def playoff_page():
         # FR3
         if "override_fr3" not in st.session_state:
             st.session_state.override_fr3 = False
-    
-        results_fr3 = game_predictor_func(seed6, seed11, neutral_site_ind_fr)
+
+        results_fr3 = theor_prepped[
+            (theor_prepped["t1_team"] == seed6) &
+            (theor_prepped["t2_team"] == seed11) &
+            (theor_prepped["t1_home"] == 1)]   
     
         # Display the header for the game
         st.markdown(f"""
@@ -637,27 +669,27 @@ def playoff_page():
         # Conditional Display of Matchup based on session_state
         if st.session_state.override_fr3 == True:
             
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fr3["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fr3.iloc[0]["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_fr3["winning_color"]}; text-align:center;">
+                <div style="font-size:15px; font-weight:bold; color:{results_fr3.iloc[0]["winning_color"]}; text-align:center;">
                       
                 </div>
             """, unsafe_allow_html=True)
             
-            fr3_winner = results_fr3["losing_team"]
+            fr3_winner = results_fr3.iloc[0]["losing_team"]
             
         else:
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fr3["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fr3.iloc[0]["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_fr3["winning_color"]}; text-align:center;">
-                    by {results_fr3["tgp_result_wt"]}
+                <div style="font-size:15px; font-weight:bold; color:{results_fr3.iloc[0]["winning_color"]}; text-align:center;">
+                    by {results_fr3.iloc[0]["point_margin"]}
                 </div>
             """, unsafe_allow_html=True)
             
-            fr3_winner = results_fr3["winning_team"]
+            fr3_winner = results_fr3.iloc[0]["winning_team"]
         
             
         # Place the checkbox at the bottom of the page (after everything else)
@@ -674,7 +706,10 @@ def playoff_page():
         if "override_fr4" not in st.session_state:
             st.session_state.override_fr4 = False
     
-        results_fr4 = game_predictor_func(seed5, seed12, neutral_site_ind_fr)
+        results_fr4 = theor_prepped[
+            (theor_prepped["t1_team"] == seed5) &
+            (theor_prepped["t2_team"] == seed12) &
+            (theor_prepped["t1_home"] == 1)]    
     
         # Display the header for the game
         st.markdown(f"""
@@ -692,27 +727,27 @@ def playoff_page():
         # Conditional Display of Matchup based on session_state
         if st.session_state.override_fr4 == True:
             
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fr4["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fr4.iloc[0]["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_fr4["winning_color"]}; text-align:center;">
+                <div style="font-size:15px; font-weight:bold; color:{results_fr4.iloc[0]["winning_color"]}; text-align:center;">
                       
                 </div>
             """, unsafe_allow_html=True)
             
-            fr4_winner = results_fr4["losing_team"]
+            fr4_winner = results_fr4.iloc[0]["losing_team"]
             
         else:
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fr4["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fr4.iloc[0]["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_fr4["winning_color"]}; text-align:center;">
-                    by {results_fr4["tgp_result_wt"]}
+                <div style="font-size:15px; font-weight:bold; color:{results_fr4.iloc[0]["winning_color"]}; text-align:center;">
+                    by {results_fr4.iloc[0]["point_margin"]}
                 </div>
             """, unsafe_allow_html=True)
             
-            fr4_winner = results_fr4["winning_team"]
+            fr4_winner = results_fr4.iloc[0]["winning_team"]
         
             
         # Place the checkbox at the bottom of the page (after everything else)
@@ -737,7 +772,10 @@ def playoff_page():
         if "override_rb" not in st.session_state:
             st.session_state.override_rb = False
     
-        results_rb = game_predictor_func(seed1, fr1_winner, neutral_site_ind_rest)
+        results_rb = theor_prepped[
+            (theor_prepped["t1_team"] == seed1) &
+            (theor_prepped["t2_team"] == fr1_winner) &
+            (theor_prepped["neutral_site"] == 1)]            
     
         # Display the header for the game
         st.markdown(f"""
@@ -755,27 +793,27 @@ def playoff_page():
         # Conditional Display of Matchup based on session_state
         if st.session_state.override_rb == True:
             
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_rb["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_rb.iloc[0]["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_rb["winning_color"]}; text-align:center;">
+                <div style="font-size:15px; font-weight:bold; color:{results_rb.iloc[0]["winning_color"]}; text-align:center;">
                       
                 </div>
             """, unsafe_allow_html=True)
             
-            rb_winner = results_rb["losing_team"]
+            rb_winner = results_rb.iloc[0]["losing_team"]
             
         else:
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_rb["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_rb.iloc[0]["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_rb["winning_color"]}; text-align:center;">
-                    by {results_rb["tgp_result_wt"]}
+                <div style="font-size:15px; font-weight:bold; color:{results_rb.iloc[0]["winning_color"]}; text-align:center;">
+                    by {results_rb.iloc[0]["point_margin"]}
                 </div>
             """, unsafe_allow_html=True)
             
-            rb_winner = results_rb["winning_team"]
+            rb_winner = results_rb.iloc[0]["winning_team"]
         
             
         # Place the checkbox at the bottom of the page (after everything else)
@@ -790,8 +828,11 @@ def playoff_page():
         # Sugar Bowl
         if "override_sb" not in st.session_state:
             st.session_state.override_sb = False
-    
-        results_sb = game_predictor_func(seed2, fr2_winner, neutral_site_ind_rest)
+
+        results_sb = theor_prepped[
+            (theor_prepped["t1_team"] == seed2) &
+            (theor_prepped["t2_team"] == fr2_winner) &
+            (theor_prepped["neutral_site"] == 1)]      
     
         # Display the header for the game
         st.markdown(f"""
@@ -809,27 +850,27 @@ def playoff_page():
         # Conditional Display of Matchup based on session_state
         if st.session_state.override_sb == True:
             
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_sb["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_sb.iloc[0]["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_sb["winning_color"]}; text-align:center;">
+                <div style="font-size:15px; font-weight:bold; color:{results_sb.iloc[0]["winning_color"]}; text-align:center;">
                       
                 </div>
             """, unsafe_allow_html=True)
             
-            sb_winner = results_sb["losing_team"]
+            sb_winner = results_sb.iloc[0]["losing_team"]
             
         else:
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_sb["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_sb.iloc[0]["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_sb["winning_color"]}; text-align:center;">
-                    by {results_sb["tgp_result_wt"]}
+                <div style="font-size:15px; font-weight:bold; color:{results_sb.iloc[0]["winning_color"]}; text-align:center;">
+                    by {results_sb.iloc[0]["point_margin"]}
                 </div>
             """, unsafe_allow_html=True)
             
-            sb_winner = results_sb["winning_team"]
+            sb_winner = results_sb.iloc[0]["winning_team"]
         
             
         # Place the checkbox at the bottom of the page (after everything else)
@@ -845,8 +886,11 @@ def playoff_page():
         # Fiesta Bowl
         if "override_fb" not in st.session_state:
             st.session_state.override_fb = False
-    
-        results_fb = game_predictor_func(seed3, fr3_winner, neutral_site_ind_rest)
+
+        results_fb = theor_prepped[
+            (theor_prepped["t1_team"] == seed3) &
+            (theor_prepped["t2_team"] == fr3_winner) &
+            (theor_prepped["neutral_site"] == 1)]     
     
         # Display the header for the game
         st.markdown(f"""
@@ -864,27 +908,27 @@ def playoff_page():
         # Conditional Display of Matchup based on session_state
         if st.session_state.override_fb == True:
             
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fb["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fb.iloc[0]["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_fb["winning_color"]}; text-align:center;">
+                <div style="font-size:15px; font-weight:bold; color:{results_fb.iloc[0]["winning_color"]}; text-align:center;">
                       
                 </div>
             """, unsafe_allow_html=True)
             
-            fb_winner = results_fb["losing_team"]
+            fb_winner = results_fb.iloc[0]["losing_team"]
             
         else:
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fb["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_fb.iloc[0]["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_fb["winning_color"]}; text-align:center;">
-                    by {results_fb["tgp_result_wt"]}
+                <div style="font-size:15px; font-weight:bold; color:{results_fb.iloc[0]["winning_color"]}; text-align:center;">
+                    by {results_fb.iloc[0]["point_margin"]}
                 </div>
             """, unsafe_allow_html=True)
             
-            fb_winner = results_fb["winning_team"]
+            fb_winner = results_fb.iloc[0]["winning_team"]
         
             
         # Place the checkbox at the bottom of the page (after everything else)
@@ -900,8 +944,11 @@ def playoff_page():
         # Peach Bowl
         if "override_pb" not in st.session_state:
             st.session_state.override_pb = False
-    
-        results_pb = game_predictor_func(seed4, fr4_winner, neutral_site_ind_rest)
+
+        results_pb = theor_prepped[
+            (theor_prepped["t1_team"] == seed4) &
+            (theor_prepped["t2_team"] == fr4_winner) &
+            (theor_prepped["neutral_site"] == 1)]     
     
         # Display the header for the game
         st.markdown(f"""
@@ -919,27 +966,27 @@ def playoff_page():
         # Conditional Display of Matchup based on session_state
         if st.session_state.override_pb == True:
             
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_pb["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_pb.iloc[0]["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_pb["winning_color"]}; text-align:center;">
+                <div style="font-size:15px; font-weight:bold; color:{results_pb.iloc[0]["winning_color"]}; text-align:center;">
                       
                 </div>
             """, unsafe_allow_html=True)
             
-            pb_winner = results_pb["losing_team"]
+            pb_winner = results_pb.iloc[0]["losing_team"]
             
         else:
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_pb["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_pb.iloc[0]["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_pb["winning_color"]}; text-align:center;">
-                    by {results_pb["tgp_result_wt"]}
+                <div style="font-size:15px; font-weight:bold; color:{results_pb.iloc[0]["winning_color"]}; text-align:center;">
+                    by {results_pb.iloc[0]["point_margin"]}
                 </div>
             """, unsafe_allow_html=True)
             
-            pb_winner = results_pb["winning_team"]
+            pb_winner = results_pb.iloc[0]["winning_team"]
         
             
         # Place the checkbox at the bottom of the page (after everything else)
@@ -964,8 +1011,11 @@ def playoff_page():
         # Cotton Bowl
         if "override_cb" not in st.session_state:
             st.session_state.override_cb = False
-    
-        results_cb = game_predictor_func(rb_winner, pb_winner, neutral_site_ind_rest)
+
+        results_cb = theor_prepped[
+            (theor_prepped["t1_team"] == rb_winner) &
+            (theor_prepped["t2_team"] == pb_winner) &
+            (theor_prepped["neutral_site"] == 1)] 
     
         # Display the header for the game
         st.markdown(f"""
@@ -983,27 +1033,27 @@ def playoff_page():
         # Conditional Display of Matchup based on session_state
         if st.session_state.override_cb == True:
             
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_cb["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_cb.iloc[0]["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_cb["winning_color"]}; text-align:center;">
+                <div style="font-size:15px; font-weight:bold; color:{results_cb.iloc[0]["winning_color"]}; text-align:center;">
                       
                 </div>
             """, unsafe_allow_html=True)
             
-            cb_winner = results_cb["losing_team"]
+            cb_winner = results_cb.iloc[0]["losing_team"]
             
         else:
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_cb["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_cb.iloc[0]["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_cb["winning_color"]}; text-align:center;">
-                    by {results_cb["tgp_result_wt"]}
+                <div style="font-size:15px; font-weight:bold; color:{results_cb.iloc[0]["winning_color"]}; text-align:center;">
+                    by {results_cb.iloc[0]["point_margin"]}
                 </div>
             """, unsafe_allow_html=True)
             
-            cb_winner = results_cb["winning_team"]
+            cb_winner = results_cb.iloc[0]["winning_team"]
         
             
         # Place the checkbox at the bottom of the page (after everything else)
@@ -1018,8 +1068,11 @@ def playoff_page():
         # Orange Bowl
         if "override_ob" not in st.session_state:
             st.session_state.override_ob = False
-    
-        results_ob = game_predictor_func(sb_winner, fb_winner, neutral_site_ind_rest)
+
+        results_ob = theor_prepped[
+            (theor_prepped["t1_team"] == sb_winner) &
+            (theor_prepped["t2_team"] == fb_winner) &
+            (theor_prepped["neutral_site"] == 1)]     
     
         # Display the header for the game
         st.markdown(f"""
@@ -1037,27 +1090,27 @@ def playoff_page():
         # Conditional Display of Matchup based on session_state
         if st.session_state.override_ob == True:
             
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_ob["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_ob.iloc[0]["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_ob["winning_color"]}; text-align:center;">
+                <div style="font-size:15px; font-weight:bold; color:{results_ob.iloc[0]["winning_color"]}; text-align:center;">
                       
                 </div>
             """, unsafe_allow_html=True)
             
-            ob_winner = results_ob["losing_team"]
+            ob_winner = results_ob.iloc[0]["losing_team"]
             
         else:
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_ob["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_ob.iloc[0]["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_ob["winning_color"]}; text-align:center;">
-                    by {results_ob["tgp_result_wt"]}
+                <div style="font-size:15px; font-weight:bold; color:{results_ob.iloc[0]["winning_color"]}; text-align:center;">
+                    by {results_ob.iloc[0]["point_margin"]}
                 </div>
             """, unsafe_allow_html=True)
             
-            ob_winner = results_ob["winning_team"]
+            ob_winner = results_ob.iloc[0]["winning_team"]
         
             
         # Place the checkbox at the bottom of the page (after everything else)
@@ -1081,8 +1134,11 @@ def playoff_page():
         # National Championship
         if "override_nc" not in st.session_state:
             st.session_state.override_nc = False
-    
-        results_nc = game_predictor_func(cb_winner, ob_winner, neutral_site_ind_rest)
+
+        results_nc = theor_prepped[
+            (theor_prepped["t1_team"] == cb_winner) &
+            (theor_prepped["t2_team"] == ob_winner) &
+            (theor_prepped["neutral_site"] == 1)]     
     
         # Display the header for the game
         st.markdown(f"""
@@ -1100,27 +1156,27 @@ def playoff_page():
         # Conditional Display of Matchup based on session_state
         if st.session_state.override_nc == True:
             
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_nc["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_nc.iloc[0]["losing_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_nc["winning_color"]}; text-align:center;">
+                <div style="font-size:15px; font-weight:bold; color:{results_nc.iloc[0]["winning_color"]}; text-align:center;">
                       
                 </div>
             """, unsafe_allow_html=True)
             
-            nc_winner = results_nc["losing_team"]
+            nc_winner = results_nc.iloc[0]["losing_team"]
             
         else:
-            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_nc["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + results_nc.iloc[0]["winning_logo"] + "' width='60'></div>", unsafe_allow_html=True)
             
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
-                <div style="font-size:15px; font-weight:bold; color:{results_nc["winning_color"]}; text-align:center;">
-                    by {results_nc["tgp_result_wt"]}
+                <div style="font-size:15px; font-weight:bold; color:{results_nc.iloc[0]["winning_color"]}; text-align:center;">
+                    by {results_nc.iloc[0]["point_margin"]}
                 </div>
             """, unsafe_allow_html=True)
             
-            nc_winner = results_nc["winning_team"]
+            nc_winner = results_nc.iloc[0]["winning_team"]
         
             
         # Place the checkbox at the bottom of the page (after everything else)
@@ -1237,7 +1293,34 @@ def game_predictor_page():
                             """, unsafe_allow_html=True)
                             
                             
-                    
+
+
+def power_rankings_page():
+
+    # Streamlit App
+    st.title("Power Rankings")
+    
+    st.write("Pick a combination of teams and see what the model predicts if they played today!")
+
+    st.write("As a note, neutral site games are not yet accounted for by the model. Here, the point differential is calculated by the average of each team playing the other at home.")
+    
+    unique_conf = sorted(theor_agg['Conf'].unique())
+
+
+    conf_options = st.multiselect(
+    "Conference", 
+    options=["All"] + unique_conf,  
+    default=["All"]  
+    )
+
+    theor_agg_filt = theor_agg
+    if "All" not in conf_options:
+        theor_agg_filt = theor_agg_filt[theor_agg_filt['Conf'].isin(conf_options)]
+
+    # Show the filtered data in Streamlit
+    st.dataframe(theor_agg_filt)
+
+ 
     
 
 
@@ -1247,7 +1330,7 @@ def game_predictor_page():
     
 # Sidebar navigation
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ("Home", "Betting Accuracy", "Game Predictor", "The Playoff"))
+page = st.sidebar.radio("Go to", ("Home", "Betting Accuracy", "Power Rankings", "The Playoff", "Game Predictor"))
 
 
 
@@ -1261,3 +1344,5 @@ elif page == "Game Predictor":
     game_predictor_page()
 elif page == "The Playoff":
     playoff_page()
+elif page == "Power Rankings":
+    power_rankings_page() 

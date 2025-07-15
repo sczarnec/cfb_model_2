@@ -238,8 +238,7 @@ current_season = 2024
 # later weeks to let stats accumulate, data before 2015 incomplete 
 fbs_only = cfb_data %>% 
   filter(t1_division == "fbs" & t2_division == "fbs") %>% 
-  filter(week > 3,
-         season > 2014)%>% 
+  filter(season > 2014)%>% 
   select(-c(t1_division, t2_division)) %>% 
   mutate(conference_game = ifelse(conference_game, 1, 0))
   
@@ -260,8 +259,12 @@ model_prepped_orig = fbs_only %>%
   arrange(t2_team, season, week) %>% 
   mutate(across(starts_with("t2_rol"), ~ ifelse(is.na(.), lag(.), .))) %>% 
   ungroup() %>% 
-  select(-c(rol_win_l1, "rol_loss_l1", "t1_moneyline", "t2_moneyline")) 
+  select(-c(rol_win_l1, "rol_loss_l1", "t1_moneyline", "t2_moneyline")) %>% 
+  filter(week > 3)
 
+
+
+### ml???
 
 
 
@@ -373,6 +376,8 @@ cols_to_ignore = c(grep("_val", names(model_prepped_moved)), grep("_odds", names
 cols_to_check <- setdiff(seq_along(model_prepped_moved), cols_to_ignore)
 model_prepped_omit <- model_prepped_moved[complete.cases(model_prepped_moved[, cols_to_check]), ]
 
+
+# maybe get rid of omit???
 
 # this week's matchups (save for app)
 model_prepped_this_week = model_prepped_omit %>% filter(season == current_season & week == 7)
@@ -1102,7 +1107,10 @@ pred_dat_final_theor = bind_rows(pred_dat_final_theor, pred_dat_final_theor2) %>
   mutate(winning_logo = ifelse(pred_t1_point_diff >0, t1_logo, t2_logo),
          losing_logo = ifelse(pred_t1_point_diff <=0, t1_logo, t2_logo),
          winning_color = ifelse(pred_t1_point_diff >0, t1_color, t2_color),
-         losing_logo = ifelse(pred_t1_point_diff <=0, t1_logo, t2_logo))
+         losing_logo = ifelse(pred_t1_point_diff <=0, t1_logo, t2_logo),
+         winning_team = ifelse(t1_win == 1, t1_team, t2_team),
+         losing_team = ifelse(t1_win == 0, t1_team, t2_team),
+         point_margin = abs(pred_t1_point_diff))
 
 
 
@@ -1112,9 +1120,15 @@ pred_dat_final_theor = bind_rows(pred_dat_final_theor, pred_dat_final_theor2) %>
 
 # aggregate by team
 
-theor_agg_conf = pred_dat_final_theor %>% filter(conference_game == 1) %>% group_by(t1_team) %>% summarise(win_perc_conf = mean(t1_win), point_diff_conf = sum(pred_t1_point_diff)) %>% arrange(desc(win_perc_conf), desc(point_diff_conf)) 
+theor_agg_conf = pred_dat_final_theor %>% filter(conference_game == 1) %>% group_by(t1_team) %>% summarise(win_perc_conf = round(mean(t1_win),2)*100, point_diff_conf = round(sum(pred_t1_point_diff),2)) %>% arrange(desc(win_perc_conf), desc(point_diff_conf)) 
 
-theor_agg = pred_dat_final_theor %>% group_by(t1_team, t1_conference) %>% summarise(win_perc = mean(t1_win), point_diff = sum(pred_t1_point_diff)) %>% arrange(desc(win_perc), desc(point_diff)) %>% left_join(theor_agg_conf, by = "t1_team") %>% mutate(rank = row_number()) %>% group_by(t1_conference) %>% mutate(conf_rank = row_number()) %>% ungroup() 
+theor_agg = pred_dat_final_theor %>% group_by(t1_team, t1_conference) %>% summarise(win_perc = round(mean(t1_win),4)*100, point_diff = round(sum(pred_t1_point_diff),2)) %>% arrange(desc(win_perc), desc(point_diff)) %>% left_join(theor_agg_conf, by = "t1_team") %>% ungroup %>%  mutate(Rank = row_number()) %>% group_by(t1_conference) %>% mutate(`Conf Rank` = row_number()) %>% ungroup() %>% 
+  rename(Team = t1_team,
+         Conf = t1_conference,
+         `Pred Win%` = win_perc,
+         `Pred Point Diff` = point_diff,
+         `Pred Conf Win%` = win_perc_conf,
+         `Pred Conf PD` = point_diff_conf)
 
 
 
