@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import csv
 import math
-import xgboost
+import xgboost as xgb
 
 
 
@@ -20,16 +20,103 @@ theor_agg = pd.read_csv("theoretical_agg_test.csv", encoding="utf-8", sep=",", h
 theor_agg = theor_agg.drop(theor_agg.columns[0], axis=1)
 
 # load point diff model
-pdiff_model = xgboost.Booster()
+pdiff_model = xgb.Booster()
 pdiff_model.load_model("most_recent_t1_point_diff_model.model")
 # load point diff vars
-pd.read_csv("most_recent_total_pointsmodel_var_list.csv", encoding="utf-8", sep=",", header=0)
+pdiff_vars = pd.read_csv("most_recent_t1_point_diffmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
+pdiff_vars = pdiff_vars.astype(str).str.strip().tolist()
+
+
+# load win prob model
+wp_model = xgb.Booster()
+wp_model.load_model("most_recent_t1_win_model.model")
+# load point diff vars
+wp_vars = pd.read_csv("most_recent_t1_winmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
+wp_vars = wp_vars.astype(str).str.strip().tolist()
+
+# load over/under model
+tp_model = xgb.Booster()
+tp_model.load_model("most_recent_total_points_model.model")
+# load point diff vars
+tp_vars = pd.read_csv("most_recent_total_pointsmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
+tp_vars = tp_vars.astype(str).str.strip().tolist()
 
 # load sample col order for xgb
 sample_data = pd.read_csv("model_prepped_this_week_test.csv", encoding="utf-8", sep=",", header=0)
 
 # load team info data
 team_info = pd.read_csv("team_info.csv", encoding="utf-8", sep=",", header=0)
+
+# extract this week value
+this_week = theor_prepped['week'].max()
+
+
+
+
+# --- Predict ---
+def predict_with_model(model, var_list, data):
+    dmatrix = xgb.DMatrix(data[var_list])
+    return model.predict(dmatrix)
+
+pdiff_preds = predict_with_model(pdiff_model, pdiff_vars, sample_data)
+wp_preds = predict_with_model(wp_model, wp_vars, sample_data)
+tp_preds = predict_with_model(tp_model, tp_vars, sample_data)
+
+# --- Create results DataFrame ---
+results_df = sample_data[["t1_team", "t2_team", "t1_home", "neutral_site", "game_id"]].copy()
+results_df["pdiff_pred"] = pdiff_preds
+results_df["win_prob_pred"] = wp_preds
+results_df["total_pts_pred"] = tp_preds
+
+# --- Normalize each row: prefer t1_home==1 or t1_team > t2_team ---
+def normalize_row(row):
+    keep_original = row["t1_home"] == 1 or row["t1_team"] > row["t2_team"]
+    if keep_original:
+        return row
+    else:
+        row["t1_team"], row["t2_team"] = row["t2_team"], row["t1_team"]
+        row["pdiff_pred"] = -row["pdiff_pred"]
+        row["win_prob_pred"] = 1 - row["win_prob_pred"]
+        return row
+
+normalized_df = results_df.apply(normalize_row, axis=1)
+
+deduped_df = normalized_df.drop_duplicates(subset=["game_id"], keep="first").reset_index(drop=True)
+
+
+# --- Transform predictions ---
+deduped_df["spread"] = -deduped_df["pdiff_pred"]  # flip to T2's spread
+
+def winprob_to_moneyline(prob):
+    if prob >= 0.5:
+        return round(-100 * prob / (1 - prob), 0)
+    else:
+        return round(100 * (1 - prob) / prob, 0)
+
+deduped_df["moneyline"] = deduped_df["win_prob_pred"].apply(winprob_to_moneyline)
+
+# --- Finalize columns ---
+final_predictions_df = deduped_df.rename(columns={
+    "t1_team": "Home",
+    "t2_team": "Away",
+    "neutral_site": "Neutral?",
+    "spread": "Pred Spread",
+    "moneyline": "Pred Moneyline",
+    "total_pts_pred": "Pred Total Points"
+})[["Home", "Away", "Neutral?", "Pred Spread", "Pred Moneyline", "Pred Total Points"]]
+
+# --- Preview ---
+final_predictions_df.to_csv("testing_this.csv")
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -344,6 +431,11 @@ def historical_results_page():
 
 
 
+            st.markdown(f"""
+                    For the spread, we are betting if we predict one team to cover the spread instead of the other. So, if Team 1 is 
+                        predicted to win by 4 when their spread is at -1, we bet on their side.
+                """, unsafe_allow_html=True)
+
             # format return explanations
             if our_return_spread >= 1:
                 st.markdown(f"""
@@ -361,13 +453,13 @@ def historical_results_page():
             if our_return_spread > naive_return_spread:
                 # Create the sentence with the calculated value for blank1
                 st.markdown(f"""
-                    The average bettor would earn a **{naive_return_percentage_spread}** return on our investment, assuming they win 50% of their bets.
+                    The average bettor would earn a **{naive_return_percentage_spread}** return on our investment, both sides being bet evenly.
                     If they evenly split \$100 between the games, we would finish with <span><b>\${naive_return_dollars_spread}</b></span>, which is <span style="color:green"><b>${ours_over_naive_spread}</b></span> less than we made.
                 """, unsafe_allow_html=True)
             else:
                 # Create the sentence with the calculated value for blank1
                 st.markdown(f"""
-                    The average bettor would earn a **{naive_return_percentage_spread}** return on their investment, assuming they win 50% of their bets.
+                    The average bettor would earn a **{naive_return_percentage_spread}** return on their investment, both sides being bet evenly.
                     If they evenly split \$100 between the games, they would finish with <span><b>\${naive_return_dollars_spread}</b></span>, which is <span style="color:red"><b>${naive_over_ours_spread}</b></span> more than we made.
                 """, unsafe_allow_html=True)
                 
@@ -383,8 +475,9 @@ def historical_results_page():
                 
                 
                 
-            
-            ### MONEYLINE
+
+
+           ### MONEYLINE
             
             # our return on investment
             our_return_moneyline = filtered_df['ml_winnings'].sum(skipna=True) / filtered_df['ml_winnings'].count()
@@ -423,6 +516,12 @@ def historical_results_page():
 
 
 
+
+            st.markdown(f"""
+                    For moneyline, we are betting only if we detect value on a certain side. So, if Team 1 has a moneyline of +240
+                        but our win probability model says it should really be +160, we bet on their side. 
+                """, unsafe_allow_html=True)
+
             # format description
             if our_return_moneyline >= 1:
                 st.markdown(f"""
@@ -440,13 +539,13 @@ def historical_results_page():
             if our_return_moneyline > naive_return_moneyline:
                 # Create the sentence with the calculated value for blank1
                 st.markdown(f"""
-                    A conservative bettor would earn a **{naive_return_percentage_moneyline}** return on our investment, assuming they always bet the favorite.
+                    A conservative bettor would earn a **{naive_return_percentage_moneyline}** return on their investment if they bet both sides.
                     If they evenly split \$100 between the games, we would finish with <span><b>\${naive_return_dollars_moneyline}</b></span>, which is <span style="color:green"><b>${ours_over_naive_moneyline}</b></span> less than we made.
                 """, unsafe_allow_html=True)
             else:
                 # Create the sentence with the calculated value for blank1
                 st.markdown(f"""
-                    A conservative bettor would earn a **{naive_return_percentage_moneyline}** return on their investment, assuming they always bet the favorite.
+                    A conservative bettor would earn a **{naive_return_percentage_moneyline}** return on their investment if they bet both sides.
                     If they evenly split \$100 between the games, they would finish with <span><b>\${naive_return_dollars_moneyline}</b></span>, which is <span style="color:red"><b>${naive_over_ours_moneyline}</b></span> more than we made.
                 """, unsafe_allow_html=True)
                 
@@ -456,7 +555,100 @@ def historical_results_page():
             st.markdown(f"""
                 <span><i>using a sample of {filtered_row_total_moneyline} games for moneyline calculations</span>
                 """, unsafe_allow_html=True)
+
+            st.write("")
+            st.write("")                
+
+
+
+
+
+           ### OVER/UNDER
+            
+            # our return on investment
+            our_return_ou = filtered_df['ou_winnings'].sum(skipna=True) / filtered_df['ou_winnings'].count()
+
+            # format it as a percentage and dollars ($100 bet)
+            our_return_percentage_ou = f"{(our_return_ou * 100) - 100:.2f}%"  # If you want to show it as a percentage
+            our_return_dollars_ou = f"{(100 * our_return_ou):.2f}"
+            
+            # average return on investment
+            naive_return_ou = filtered_df['naive_ou_winnings'].sum(skipna=True) / filtered_df['naive_ou_winnings'].count()
+
+            # format it as a percentage and dollars ($100 bet)
+            naive_return_percentage_ou = f"{(naive_return_ou * 100) - 100:.2f}%"  # If you want to show it as a percentage
+            naive_return_dollars_ou = f"{(100 * naive_return_ou):.2f}"
+            
+            # diff between ours and average
+            ours_over_naive_ou = f"{100 * our_return_ou - 100 * naive_return_ou:.2f}"
+            naive_over_ours_ou = f"{100 * naive_return_ou - 100 * our_return_ou:.2f}"
+
+            
+            # format overall print          
+            if our_return_ou >= 1:
+                st.markdown(f"""
+                        <div style="font-size:30px; font-weight:bold; color:green; text-align:center;">
+                            Over/Under: {our_return_percentage_ou}
+                        </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                        <div style="font-size:30px; font-weight:bold; color:red; text-align:center;">
+                            Over/Under: {our_return_percentage_ou}
+                        </div>
+                    """, unsafe_allow_html=True)
                 
+            st.write("")
+
+
+
+
+            st.markdown(f"""
+                    For over/under, we are betting the side that our model predicts to be correct. So, if the line is 37.5 and our model
+                    predicts 40 total points, we bet the over. 
+                """, unsafe_allow_html=True)
+
+            # format description
+            if our_return_ou >= 1:
+                st.markdown(f"""
+                    Using our model to bet over/under in these games would give us a <span style="color:green"><b>{our_return_percentage_ou}</b></span> return on our investment.
+                    In other words, if we evenly split \$100 between the games, we would finish with <span style="color:green"><b>\${our_return_dollars_ou}</b></span>.
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                    Using our model to bet over/under in these games would give us a <span style="color:red"><b>{our_return_percentage_ou}</b></span> return on our investment.
+                    In other words, if we evenly split \$100 between the games, we would finish with <span style="color:red"><b>\${our_return_dollars_ou}</b></span>.
+                """, unsafe_allow_html=True)
+            
+            
+            
+            if our_return_ou > naive_return_ou:
+                # Create the sentence with the calculated value for blank1
+                st.markdown(f"""
+                    A conservative bettor would earn a **{naive_return_percentage_ou}** return on their investment if they bet both sides.
+                    If they evenly split \$100 between the games, we would finish with <span><b>\${naive_return_dollars_ou}</b></span>, which is <span style="color:green"><b>${ours_over_naive_ou}</b></span> less than we made.
+                """, unsafe_allow_html=True)
+            else:
+                # Create the sentence with the calculated value for blank1
+                st.markdown(f"""
+                    A conservative bettor would earn a **{naive_return_percentage_ou}** return on their investment if they bet both sides.
+                    If they evenly split \$100 between the games, they would finish with <span><b>\${naive_return_dollars_ou}</b></span>, which is <span style="color:red"><b>${naive_over_ours_ou}</b></span> more than we made.
+                """, unsafe_allow_html=True)
+                
+            
+            filtered_row_total_ou = filtered_df['ou_winnings'].count()
+            
+            st.markdown(f"""
+                <span><i>using a sample of {filtered_row_total_ou} games for over/under calculations</span>
+                """, unsafe_allow_html=True)
+
+
+
+
+
+
+
+
                 
                 
                 
@@ -467,12 +659,6 @@ def playoff_page():
   
   st.write("Customize your playoff! Select what teams you want in each seed. The model will predict each game, but you can override with the checkbox.")
 
-  st.write("Some notes: first, the underlying data used for these predictions ends at the Conference Championship week. So, it does not currently take recent playoff performance into account.")
-
-  st.write("Another, neutral site games are not yet accounted for by the model. Here, the point differential is calculated by the average of each team playing the other at home.")
-
-  st.write("As you can see in the Betting Accuracy page, this model is currently not great at predicting moneyline, only spread. In other words, it can find where sportsbooks underrate teams, but it overstates these differences itself, leading to crazy win projections at times. For example, ND should probably not be predicted to win it all, but it would probably be profitable to bet their side of the spread.")
-  
   st.write("  ")
 
 
@@ -1203,8 +1389,6 @@ def game_predictor_page():
   
   st.write("Pick a combination of teams and see what the model predicts if they played today!")
 
-  st.write("As a note, neutral site games are not yet accounted for by the model. Here, the point differential is calculated by the average of each team playing the other at home.")
-  
   # Create columns for layout
   col1, col2 = st.columns([1,2])
     
@@ -1233,7 +1417,7 @@ def game_predictor_page():
       
       st.markdown(f"""
           <div style="font-size:18px; font-weight:bold; text-align:center;">
-              Data last updated after <br> <span style="color: orange;"> Week {theor_prepped['week'].min()} </span>
+              Data last updated after <br> <span style="color: orange;"> Week {this_week} </span>
           </div>
       """, unsafe_allow_html=True)
 
@@ -1298,12 +1482,10 @@ def game_predictor_page():
 def power_rankings_page():
 
     # Streamlit App
-    st.title("Power Rankings")
+    st.title("The Czar Poll")
     
     st.write("Pick a combination of teams and see what the model predicts if they played today!")
 
-    st.write("As a note, neutral site games are not yet accounted for by the model. Here, the point differential is calculated by the average of each team playing the other at home.")
-    
     unique_conf = sorted(theor_agg['Conf'].unique())
 
 
@@ -1320,8 +1502,49 @@ def power_rankings_page():
     # Show the filtered data in Streamlit
     st.dataframe(theor_agg_filt)
 
- 
+
+
+
+
+
+def this_week_page():
+
+    # Streamlit App
+    st.title("This Week's Picks")
+
+    st.write("Here are our picks for the week. You can toggle between the data frame view or one game at a time.")
+
+    st.markdown(f"""
+    <div style="font-size:35px; font-weight:bold; text-align:left;">
+        <br> <span style="color: orange;"> Week {this_week} </span>
+    </div>
+    """, unsafe_allow_html=True) 
+
+
+    # Create columns for layout
+    col1, col2, col3, col4 = st.columns([3, 1, 8, 3])
     
+
+
+
+    with col1:
+      
+        st.write("### Filters")
+
+
+    # column for space
+    with col2:
+        st.write("")
+
+
+    with col3:
+        st.write("test")
+
+
+    with col4:
+        st.write("test")        
+ 
+   
 
 
             
@@ -1330,7 +1553,7 @@ def power_rankings_page():
     
 # Sidebar navigation
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ("Home", "Betting Accuracy", "Power Rankings", "The Playoff", "Game Predictor"))
+page = st.sidebar.radio("Go to", ("Home", "Betting Accuracy", "This Week's Picks", "The Czar Poll", "The Playoff", "Game Predictor"))
 
 
 
@@ -1344,5 +1567,7 @@ elif page == "Game Predictor":
     game_predictor_page()
 elif page == "The Playoff":
     playoff_page()
-elif page == "Power Rankings":
+elif page == "The Czar Poll":
     power_rankings_page() 
+elif page == "This Week's Picks":
+    this_week_page()    
