@@ -21,24 +21,24 @@ theor_agg = theor_agg.drop(theor_agg.columns[0], axis=1)
 
 # load point diff model
 pdiff_model = xgb.Booster()
-pdiff_model.load_model("most_recent_t1_point_diff_model.model")
+pdiff_model.load_model("saved_models/20247_t1_point_diff_model.model")
 # load point diff vars
-pdiff_vars = pd.read_csv("most_recent_t1_point_diffmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
+pdiff_vars = pd.read_csv("saved_models/20247_t1_point_diffmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
 pdiff_vars = pdiff_vars.astype(str).str.strip().tolist()
 
 
 # load win prob model
 wp_model = xgb.Booster()
-wp_model.load_model("most_recent_t1_win_model.model")
+wp_model.load_model("saved_models/20247_t1_win_model.model")
 # load point diff vars
-wp_vars = pd.read_csv("most_recent_t1_winmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
+wp_vars = pd.read_csv("saved_models/20247_t1_winmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
 wp_vars = wp_vars.astype(str).str.strip().tolist()
 
 # load over/under model
 tp_model = xgb.Booster()
-tp_model.load_model("most_recent_total_points_model.model")
+tp_model.load_model("saved_models/20247_total_points_model.model")
 # load point diff vars
-tp_vars = pd.read_csv("most_recent_total_pointsmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
+tp_vars = pd.read_csv("saved_models/20247_total_pointsmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
 tp_vars = tp_vars.astype(str).str.strip().tolist()
 
 # load sample col order for xgb
@@ -56,6 +56,7 @@ this_week = theor_prepped['week'].max()
 # --- Predict ---
 def predict_with_model(model, var_list, data):
     dmatrix = xgb.DMatrix(data[var_list])
+    #print(data[var_list].columns)
     return model.predict(dmatrix)
 
 pdiff_preds = predict_with_model(pdiff_model, pdiff_vars, sample_data)
@@ -70,7 +71,7 @@ results_df["total_pts_pred"] = tp_preds
 
 # --- Normalize each row: prefer t1_home==1 or t1_team > t2_team ---
 def normalize_row(row):
-    keep_original = row["t1_home"] == 1 or row["t1_team"] > row["t2_team"]
+    keep_original = ((row["t1_home"] == 1) or ((row["neutral_site"] == 1) and (row["t1_team"] > row["t2_team"])))
     if keep_original:
         return row
     else:
@@ -81,11 +82,19 @@ def normalize_row(row):
 
 normalized_df = results_df.apply(normalize_row, axis=1)
 
-deduped_df = normalized_df.drop_duplicates(subset=["game_id"], keep="first").reset_index(drop=True)
+# --- Aggregate by game_id (average predictions) ---
+aggregated_df = normalized_df.groupby(
+    ["game_id", "t1_team", "t2_team", "neutral_site"], as_index=False
+).agg({
+    "pdiff_pred": "mean",
+    "win_prob_pred": "mean",
+    "total_pts_pred": "mean"
+})
 
 
 # --- Transform predictions ---
-deduped_df["spread"] = -deduped_df["pdiff_pred"]  # flip to T2's spread
+aggregated_df["spread_pred"] = -aggregated_df["pdiff_pred"]  # flip to T2's spread
+aggregated_df["t2_win_prob_pred"] = (1- aggregated_df["win_prob_pred"])
 
 def winprob_to_moneyline(prob):
     if prob >= 0.5:
@@ -93,23 +102,101 @@ def winprob_to_moneyline(prob):
     else:
         return round(100 * (1 - prob) / prob, 0)
 
-deduped_df["moneyline"] = deduped_df["win_prob_pred"].apply(winprob_to_moneyline)
+aggregated_df["t1_pred_moneyline"] = aggregated_df["win_prob_pred"].apply(winprob_to_moneyline)
+aggregated_df["t2_pred_moneyline"] = aggregated_df["t2_win_prob_pred"].apply(winprob_to_moneyline)
 
 # --- Finalize columns ---
-final_predictions_df = deduped_df.rename(columns={
+final_predictions_df = aggregated_df.rename(columns={
     "t1_team": "Home",
     "t2_team": "Away",
     "neutral_site": "Neutral?",
-    "spread": "Pred Spread",
-    "moneyline": "Pred Moneyline",
-    "total_pts_pred": "Pred Total Points"
-})[["Home", "Away", "Neutral?", "Pred Spread", "Pred Moneyline", "Pred Total Points"]]
+    "spread_pred": "Pred Home Spread",
+    "t1_pred_moneyline": "Pred Home Moneyline",
+    "t2_pred_moneyline": "Pred Away Moneyline",
+    "total_pts_pred": "Pred Total Points",
+    "win_prob_pred": "Pred Home Win Prob",
+    "t2_win_prob_pred": "Pred Away Win Prob"
+})[["Home", "Away", "Neutral?", "Pred Home Spread", "Pred Home Moneyline", "Pred Away Moneyline", "Pred Total Points", "Pred Home Win Prob",
+    "Pred Away Win Prob", "game_id"]]
 
 # --- Preview ---
-final_predictions_df.to_csv("testing_this.csv")
+#final_predictions_df.to_csv("testing_this.csv")
+
+betting_join = sample_data[["t1_book_spread", "t1_ml_odds", "t2_ml_odds", "over_val", "game_id", "t1_team"]]
+
+
+merged_predictions = final_predictions_df.merge(betting_join, left_on=["game_id","Home"], right_on=["game_id", "t1_team"], how="left")
 
 
 
+
+spread_conditions = [merged_predictions["Pred Home Spread"] < merged_predictions["t1_book_spread"]]
+spread_choices = [merged_predictions["Home"]
+]
+merged_predictions["Spread Bet on:"] =  np.select(spread_conditions,spread_choices, default=merged_predictions["Away"])
+merged_predictions["Spread Value"] = abs(merged_predictions["Pred Home Spread"] - merged_predictions["t1_book_spread"])    
+
+
+
+
+
+def moneyline_to_winprob(ml):
+    if ml < 0:
+        # Negative moneyline (favorite)
+        return round(-ml / (-ml + 100), 4)
+    else:
+        # Positive moneyline (underdog)
+        return round(100 / (ml + 100), 4)
+    
+
+merged_predictions["t1_ml_prob"] = merged_predictions["t1_ml_odds"].apply(moneyline_to_winprob)
+merged_predictions["t2_ml_prob"] = merged_predictions["t2_ml_odds"].apply(moneyline_to_winprob)
+
+
+
+
+conditions_ml = [
+    merged_predictions["t1_ml_prob"] < merged_predictions["Pred Home Win Prob"],
+    merged_predictions["t2_ml_prob"] < merged_predictions["Pred Away Win Prob"]
+]
+choices_ml_bet = [
+    merged_predictions["Home"],
+    merged_predictions["Away"]
+]
+choices_ml_val = [
+    merged_predictions["Pred Home Win Prob"] - merged_predictions["t1_ml_prob"],
+    merged_predictions["Pred Away Win Prob"] - merged_predictions["t2_ml_prob"]
+]
+merged_predictions["ML Bet on:"] = np.select(conditions_ml, choices_ml_bet, default="Neither")
+merged_predictions["ML Value"] = np.select(conditions_ml, choices_ml_val, default="None")  
+
+
+
+merged_predictions["O/U Bet on:"] = merged_predictions.apply(
+    lambda row: "Over" if row["Pred Total Points"] > row["over_val"] else "Under", axis=1
+)
+
+
+merged_predictions["O/U Value"] = abs(merged_predictions["Pred Total Points"] - merged_predictions["over_val"])  
+    
+
+
+
+# --- Finalize columns ---
+merged_predictions = merged_predictions.rename(columns={
+    "t1_book_spread": "Book Home Spread",
+    "t1_ml_odds": "Book Home Moneyline",
+    "t2_ml_odds": "Book Away Moneyline",
+    "t1_ml_prob": "Book Home Win Prob",
+    "t2_ml_prob": "Book Away Win Prob",
+    "over_val": "Book O/U"
+})
+
+
+
+this_week_display_df = merged_predictions[["Home", "Away", "Neutral?", "Spread Bet on:", "ML Bet on:", "O/U Bet on:", "Spread Value", "Pred Home Spread", "Book Home Spread",
+     "ML Value", "Pred Home Moneyline", "Book Home Moneyline", "Pred Away Moneyline", "Book Away Moneyline", "O/U Value",
+       "Pred Total Points", "Book O/U"]]
 
 
 
@@ -1522,7 +1609,7 @@ def this_week_page():
 
 
     # Create columns for layout
-    col1, col2, col3, col4 = st.columns([3, 1, 8, 3])
+    col1, col2, col3 = st.columns([2, .5, 8])
     
 
 
@@ -1539,10 +1626,9 @@ def this_week_page():
 
     with col3:
         st.write("test")
+        st.dataframe(this_week_display_df)
 
-
-    with col4:
-        st.write("test")        
+        
  
    
 
