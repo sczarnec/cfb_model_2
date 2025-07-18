@@ -91,9 +91,10 @@ aggregated_df = normalized_df.groupby(
     "total_pts_pred": "mean"
 })
 
+aggregated_df["total_pts_pred"] = round(aggregated_df["total_pts_pred"],2)
 
 # --- Transform predictions ---
-aggregated_df["spread_pred"] = -aggregated_df["pdiff_pred"]  # flip to T2's spread
+aggregated_df["spread_pred"] = round(-aggregated_df["pdiff_pred"],2)  # flip to T2's spread
 aggregated_df["t2_win_prob_pred"] = (1- aggregated_df["win_prob_pred"])
 
 def winprob_to_moneyline(prob):
@@ -122,7 +123,7 @@ final_predictions_df = aggregated_df.rename(columns={
 # --- Preview ---
 #final_predictions_df.to_csv("testing_this.csv")
 
-betting_join = sample_data[["t1_book_spread", "t1_ml_odds", "t2_ml_odds", "over_val", "game_id", "t1_team"]]
+betting_join = sample_data[["t1_book_spread", "t1_ml_odds", "t2_ml_odds", "over_val", "t1_conference", "t2_conference", "game_id", "t1_team"]]
 
 
 merged_predictions = final_predictions_df.merge(betting_join, left_on=["game_id","Home"], right_on=["game_id", "t1_team"], how="left")
@@ -134,8 +135,7 @@ spread_conditions = [merged_predictions["Pred Home Spread"] < merged_predictions
 spread_choices = [merged_predictions["Home"]
 ]
 merged_predictions["Spread Bet on:"] =  np.select(spread_conditions,spread_choices, default=merged_predictions["Away"])
-merged_predictions["Spread Value"] = abs(merged_predictions["Pred Home Spread"] - merged_predictions["t1_book_spread"])    
-
+merged_predictions["Spread Value"] = round(abs(merged_predictions["Pred Home Spread"] - merged_predictions["t1_book_spread"]),2)  
 
 
 
@@ -168,7 +168,8 @@ choices_ml_val = [
     merged_predictions["Pred Away Win Prob"] - merged_predictions["t2_ml_prob"]
 ]
 merged_predictions["ML Bet on:"] = np.select(conditions_ml, choices_ml_bet, default="Neither")
-merged_predictions["ML Value"] = np.select(conditions_ml, choices_ml_val, default="None")  
+merged_predictions["ML Value"] = np.select(conditions_ml, choices_ml_val, default=0)
+merged_predictions["ML Value"] = round(merged_predictions["ML Value"]*100,2)
 
 
 
@@ -177,10 +178,11 @@ merged_predictions["O/U Bet on:"] = merged_predictions.apply(
 )
 
 
-merged_predictions["O/U Value"] = abs(merged_predictions["Pred Total Points"] - merged_predictions["over_val"])  
+merged_predictions["O/U Value"] = round(abs(merged_predictions["Pred Total Points"] - merged_predictions["over_val"]),2)
     
 
-
+merged_predictions["Pred Home Win Prob"] = round(merged_predictions["Pred Home Win Prob"],4)
+merged_predictions["Pred Away Win Prob"] = round(merged_predictions["Pred Away Win Prob"],4)
 
 # --- Finalize columns ---
 merged_predictions = merged_predictions.rename(columns={
@@ -189,17 +191,10 @@ merged_predictions = merged_predictions.rename(columns={
     "t2_ml_odds": "Book Away Moneyline",
     "t1_ml_prob": "Book Home Win Prob",
     "t2_ml_prob": "Book Away Win Prob",
-    "over_val": "Book O/U"
+    "over_val": "Book O/U",
+    "t1_conference": "Home Conf",
+    "t2_conference": "Away Conf"
 })
-
-
-
-this_week_display_df = merged_predictions[["Home", "Away", "Neutral?", "Spread Bet on:", "ML Bet on:", "O/U Bet on:", "Spread Value", "Pred Home Spread", "Book Home Spread",
-     "ML Value", "Pred Home Moneyline", "Book Home Moneyline", "Pred Away Moneyline", "Book Away Moneyline", "O/U Value",
-       "Pred Total Points", "Book O/U"]]
-
-
-
 
 
 
@@ -1615,8 +1610,91 @@ def this_week_page():
 
 
     with col1:
+
+
+
+        # Get unique teams and sort them in ascending order (for both t1 and t2)
+        unique_teams = pd.unique(merged_predictions[['Home', 'Away']].values.ravel('K'))
+        unique_teams_sorted = sorted(unique_teams)
+
+        # Get unique teams and sort them in ascending order (for both t1 and t2)
+        unique_conf = pd.unique(merged_predictions[['Home Conf', 'Away Conf']].values.ravel('K'))
+        unique_conf_sorted = sorted(unique_conf)
+            
+   
+
+  
+
+
+
+        this_week_display_df = merged_predictions[["Home", "Away", "Spread Bet on:", "ML Bet on:", "O/U Bet on:", "Spread Value", "Pred Home Spread", "Book Home Spread",
+            "ML Value", "Pred Home Moneyline", "Book Home Moneyline", "Pred Away Moneyline", "Book Away Moneyline", "O/U Value",
+            "Pred Total Points", "Book O/U", "Home Conf", "Away Conf", "Neutral?"]]
+
+        this_week_display_spread_df = merged_predictions[["Home", "Away", "Spread Bet on:", "Spread Value", "Pred Home Spread", "Book Home Spread", "Home Conf", "Away Conf", "Neutral?"]]
+
+        this_week_display_ml_df = merged_predictions[["Home", "Away", "ML Value", "Pred Home Moneyline", "Book Home Moneyline", "Pred Away Moneyline", 
+                                                    "Book Away Moneyline", "Home Conf", "Away Conf", "Neutral?"]]
+
+        this_week_display_ou_df = merged_predictions[["Home", "Away", "O/U Bet on:", "O/U Value", "Pred Total Points", "Book O/U", "Home Conf", "Away Conf", "Neutral?"]]      
       
+
         st.write("### Filters")
+        
+        # Create dropdowns for filtering options on the left column
+        bet_type_options = st.selectbox(
+            "Bet Type", 
+            options=["All", "Spread", "Moneyline", "Over/Under"],  
+            index=0  
+        )
+
+        # Create dropdowns for filtering options on the left column
+        team_options = st.selectbox(
+            "Team", 
+            options=["All"] + unique_teams_sorted,  
+            index=0  
+        )             
+
+        conf_options = st.selectbox(
+            "Conference", 
+            options=["All"] + unique_conf_sorted,  
+            index = 0 
+        )
+
+
+        sort_options = st.selectbox(
+            "Sort Value By", 
+            options=["Default", "Spread", "Moneyline", "Over/Under"],  
+            index=0  
+        )
+
+
+        
+        if bet_type_options == "All":
+            picks_df = this_week_display_df
+        elif bet_type_options == "Spread":
+            picks_df = this_week_display_spread_df
+        elif bet_type_options == "Moneyline":
+            picks_df = this_week_display_ml_df
+        else:
+            picks_df = this_week_display_ou_df
+
+
+        if team_options != "All":
+            picks_df = picks_df[picks_df['Home'].eq(team_options) | picks_df['Away'].eq(team_options)]
+
+        if conf_options != "All":
+            picks_df = picks_df[picks_df['Home Conf'].eq(conf_options) | picks_df['Away Conf'].eq(conf_options)] 
+
+        if sort_options == "Spread":
+            picks_df.sort_values(by="Spread Value", ascending=False, inplace=True)
+        elif sort_options == "Moneyline":
+            picks_df.sort_values(by="ML Value", ascending=False, inplace=True)
+        elif sort_options == "Over/Under":
+            picks_df.sort_values(by="O/U Value", ascending=False, inplace=True)
+
+    
+
 
 
     # column for space
@@ -1625,8 +1703,7 @@ def this_week_page():
 
 
     with col3:
-        st.write("test")
-        st.dataframe(this_week_display_df)
+        st.dataframe(picks_df)
 
         
  
