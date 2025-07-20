@@ -1120,13 +1120,13 @@ pred_dat_final_theor = bind_rows(pred_dat_final_theor, pred_dat_final_theor2) %>
 
 # aggregate by team
 
-theor_agg_conf = pred_dat_final_theor %>% filter(conference_game == 1) %>% group_by(t1_team) %>% summarise(win_perc_conf = round(mean(t1_win),2)*100, point_diff_conf = round(sum(pred_t1_point_diff),2)) %>% arrange(desc(win_perc_conf), desc(point_diff_conf)) 
+theor_agg_conf = pred_dat_final_theor %>% filter(conference_game == 1) %>% group_by(t1_team) %>% summarise(win_perc_conf = round(mean(t1_win),2)*100, point_diff_conf = round(mean(pred_t1_point_diff),2)) %>% arrange(desc(win_perc_conf), desc(point_diff_conf)) 
 
-theor_agg = pred_dat_final_theor %>% group_by(t1_team, t1_conference) %>% summarise(win_perc = round(mean(t1_win),4)*100, point_diff = round(sum(pred_t1_point_diff),2)) %>% arrange(desc(win_perc), desc(point_diff)) %>% left_join(theor_agg_conf, by = "t1_team") %>% ungroup %>%  mutate(Rank = row_number()) %>% group_by(t1_conference) %>% mutate(`Conf Rank` = row_number()) %>% ungroup() %>% 
+theor_agg = pred_dat_final_theor %>% group_by(t1_team, t1_conference) %>% summarise(win_perc = round(mean(t1_win),2)*100, point_diff = round(mean(pred_t1_point_diff),2)) %>% arrange(desc(win_perc), desc(point_diff)) %>% left_join(theor_agg_conf, by = "t1_team") %>% ungroup %>%  mutate(Rank = row_number()) %>% group_by(t1_conference) %>% mutate(`Conf Rank` = row_number()) %>% ungroup() %>% 
   rename(Team = t1_team,
          Conf = t1_conference,
          `Pred Win%` = win_perc,
-         `Pred Point Diff` = point_diff,
+         `Pred PD/g` = point_diff,
          `Pred Conf Win%` = win_perc_conf,
          `Pred Conf PD` = point_diff_conf)
 
