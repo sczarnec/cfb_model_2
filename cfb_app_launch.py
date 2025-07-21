@@ -9,6 +9,9 @@ import xgboost as xgb
 
 #### READ IN CSVs
 
+
+## GONNA HAVE TO CHANGE A LOT OF THESE ONCE AUTOMATED
+
 # Read in historical betting data
 historical_data = pd.read_csv("final_prediction_df_test.csv", encoding="utf-8", sep=",", header=0)
 
@@ -41,7 +44,7 @@ tp_model.load_model("saved_models/20247_total_points_model.model")
 tp_vars = pd.read_csv("saved_models/20247_total_pointsmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
 tp_vars = tp_vars.astype(str).str.strip().tolist()
 
-# load sample col order for xgb
+# load this week's data for XGB
 sample_data = pd.read_csv("model_prepped_this_week_test.csv", encoding="utf-8", sep=",", header=0)
 
 # load team info data
@@ -53,23 +56,25 @@ this_week = theor_prepped['week'].max()
 
 
 
-# --- Predict ---
+### This Week Predictions
+
+# predict function
 def predict_with_model(model, var_list, data):
     dmatrix = xgb.DMatrix(data[var_list])
-    #print(data[var_list].columns)
     return model.predict(dmatrix)
 
+# predict the 3 outcomes for this week
 pdiff_preds = predict_with_model(pdiff_model, pdiff_vars, sample_data)
 wp_preds = predict_with_model(wp_model, wp_vars, sample_data)
 tp_preds = predict_with_model(tp_model, tp_vars, sample_data)
 
-# --- Create results DataFrame ---
+# results dfs
 results_df = sample_data[["t1_team", "t2_team", "t1_home", "neutral_site", "game_id"]].copy()
 results_df["pdiff_pred"] = pdiff_preds
 results_df["win_prob_pred"] = wp_preds
 results_df["total_pts_pred"] = tp_preds
 
-# --- Normalize each row: prefer t1_home==1 or t1_team > t2_team ---
+# function to make sure games are on same side
 def normalize_row(row):
     keep_original = ((row["t1_home"] == 1) or ((row["neutral_site"] == 1) and (row["t1_team"] > row["t2_team"])))
     if keep_original:
@@ -79,10 +84,9 @@ def normalize_row(row):
         row["pdiff_pred"] = -row["pdiff_pred"]
         row["win_prob_pred"] = 1 - row["win_prob_pred"]
         return row
-
 normalized_df = results_df.apply(normalize_row, axis=1)
 
-# --- Aggregate by game_id (average predictions) ---
+# aggregate the two predictions of each game
 aggregated_df = normalized_df.groupby(
     ["game_id", "t1_team", "t2_team", "neutral_site"], as_index=False
 ).agg({
@@ -91,22 +95,20 @@ aggregated_df = normalized_df.groupby(
     "total_pts_pred": "mean"
 })
 
+
+# modify and create some cols, inclusing predicted moneylines
 aggregated_df["total_pts_pred"] = round(aggregated_df["total_pts_pred"],2)
-
-# --- Transform predictions ---
-aggregated_df["spread_pred"] = round(-aggregated_df["pdiff_pred"],2)  # flip to T2's spread
+aggregated_df["spread_pred"] = round(-aggregated_df["pdiff_pred"],2)  
 aggregated_df["t2_win_prob_pred"] = (1- aggregated_df["win_prob_pred"])
-
 def winprob_to_moneyline(prob):
     if prob >= 0.5:
         return round(-100 * prob / (1 - prob), 0)
     else:
         return round(100 * (1 - prob) / prob, 0)
-
 aggregated_df["t1_pred_moneyline"] = aggregated_df["win_prob_pred"].apply(winprob_to_moneyline)
 aggregated_df["t2_pred_moneyline"] = aggregated_df["t2_win_prob_pred"].apply(winprob_to_moneyline)
 
-# --- Finalize columns ---
+# change col names to be better for UI, select needed cols
 final_predictions_df = aggregated_df.rename(columns={
     "t1_team": "Home",
     "t2_team": "Away",
@@ -120,26 +122,27 @@ final_predictions_df = aggregated_df.rename(columns={
 })[["Home", "Away", "Neutral?", "Pred Home Spread", "Pred Home Moneyline", "Pred Away Moneyline", "Pred Total Points", "Pred Home Win Prob",
     "Pred Away Win Prob", "game_id"]]
 
-# --- Preview ---
-#final_predictions_df.to_csv("testing_this.csv")
 
+# join in more info we need for betting comparisons
 betting_join = sample_data[["t1_book_spread", "t1_ml_odds", "t2_ml_odds", "over_val", "t1_conference", "t2_conference", "game_id", "t1_team"]]
-
-
 merged_predictions = final_predictions_df.merge(betting_join, left_on=["game_id","Home"], right_on=["game_id", "t1_team"], how="left")
 
 
+## Spread
 
-
+# create spread value and bet on columns
 spread_conditions = [merged_predictions["Pred Home Spread"] < merged_predictions["t1_book_spread"]]
-spread_choices = [merged_predictions["Home"]
-]
+spread_choices = [merged_predictions["Home"]]
 merged_predictions["Spread Bet on:"] =  np.select(spread_conditions,spread_choices, default=merged_predictions["Away"])
-merged_predictions["Spread Value"] = round(abs(merged_predictions["Pred Home Spread"] - merged_predictions["t1_book_spread"]),2)  
+merged_predictions["Spread Value"] = round(abs(merged_predictions["Pred Home Spread"] - merged_predictions["t1_book_spread"]),2)
 
 
 
 
+
+## Moneyline
+
+# convert book ml to win prob, create some related cols
 def moneyline_to_winprob(ml):
     if ml < 0:
         # Negative moneyline (favorite)
@@ -148,12 +151,8 @@ def moneyline_to_winprob(ml):
         # Positive moneyline (underdog)
         return round(100 / (ml + 100), 4)
     
-
 merged_predictions["t1_ml_prob"] = merged_predictions["t1_ml_odds"].apply(moneyline_to_winprob)
 merged_predictions["t2_ml_prob"] = merged_predictions["t2_ml_odds"].apply(moneyline_to_winprob)
-
-
-
 
 conditions_ml = [
     merged_predictions["t1_ml_prob"] < merged_predictions["Pred Home Win Prob"],
@@ -167,25 +166,30 @@ choices_ml_val = [
     merged_predictions["Pred Home Win Prob"] - merged_predictions["t1_ml_prob"],
     merged_predictions["Pred Away Win Prob"] - merged_predictions["t2_ml_prob"]
 ]
+
+# create ml value and bet on cols
 merged_predictions["ML Bet on:"] = np.select(conditions_ml, choices_ml_bet, default="Neither")
 merged_predictions["ML Value"] = np.select(conditions_ml, choices_ml_val, default=0)
 merged_predictions["ML Value"] = round(merged_predictions["ML Value"]*100,2)
 
 
 
+## Over/Under
+
+# create o/u value and bet on cols
 merged_predictions["O/U Bet on:"] = merged_predictions.apply(
     lambda row: "Over" if row["Pred Total Points"] > row["over_val"] else "Under", axis=1
 )
-
-
 merged_predictions["O/U Value"] = round(abs(merged_predictions["Pred Total Points"] - merged_predictions["over_val"]),2)
     
 
+
+# make cols cleaner
 merged_predictions["Pred Home Win Prob"] = round(merged_predictions["Pred Home Win Prob"],4)
 merged_predictions["Pred Away Win Prob"] = round(merged_predictions["Pred Away Win Prob"],4)
-
+# matchup col
 merged_predictions["matchup"] = merged_predictions["Away"] + " vs " + merged_predictions["Home"]
-
+# add logos and colors
 merged_predictions = merged_predictions.merge(team_info, left_on = ["Home"], right_on = ["school"], how = "left")
 merged_predictions = merged_predictions.rename(columns = {"color":"home_color", "logo": "home_logo"})
 merged_predictions = merged_predictions.drop(["school"], axis = 1)
@@ -193,7 +197,7 @@ merged_predictions = merged_predictions.merge(team_info, left_on = ["Away"], rig
 merged_predictions = merged_predictions.rename(columns = {"color":"away_color", "logo": "away_logo"})
 merged_predictions = merged_predictions.drop(["school"], axis = 1)
 
-# --- Finalize columns ---
+# final df with cleaner names
 merged_predictions = merged_predictions.rename(columns={
     "t1_book_spread": "Book Home Spread",
     "t1_ml_odds": "Book Home Moneyline",
@@ -211,6 +215,14 @@ merged_predictions = merged_predictions.rename(columns={
 
 
 
+
+### THEORETICAL MODIFICATIONS
+
+# we used predicted sportsbook spreads for theoretical games
+# these matchups we actually do know the spread for so let's use that, modified slightly for H/A/N
+
+
+# mark what the original game location was in df
 sample_data_cp = sample_data.copy()
 sample_data_cp["og_han"] = 0
 sample_data_cp["real_game"] = 0
@@ -218,6 +230,7 @@ sample_data_cp.loc[sample_data_cp["t1_home"] == 1, "og_han"] = 1
 sample_data_cp.loc[(sample_data_cp["t1_home"] == 0) & (sample_data_cp["neutral_site"] == 0), "og_han"] = 2
 sample_data_cp.loc[sample_data_cp["neutral_site"] == 1, "og_han"] = 3
 
+# home only df, modify book spread based on original location
 t1_home_only = sample_data_cp.copy()
 t1_home_only["t1_home"] = 1
 t1_home_only["neutral_site"] = 0
@@ -226,6 +239,7 @@ t1_home_only.loc[t1_home_only["og_han"]==3, "t1_book_spread"] = t1_home_only["t1
 t1_home_only.loc[t1_home_only["og_han"]==1, "real_game"] = 1
 t1_home_only.drop(["og_han"], axis=1)
 
+# away only df, modify book spread based on original location
 t1_away_only = sample_data_cp.copy()
 t1_away_only["t1_home"] = 0
 t1_away_only["neutral_site"] = 0
@@ -234,6 +248,7 @@ t1_away_only.loc[t1_away_only["og_han"]==3, "t1_book_spread"] = t1_away_only["t1
 t1_away_only.loc[t1_away_only["og_han"]==2, "real_game"] = 1
 t1_away_only.drop(["og_han"], axis=1)
 
+# neutral only df, modify book spread based on original location
 t1_neutral_only = sample_data_cp.copy()
 t1_neutral_only["t1_home"] = 0
 t1_neutral_only["neutral_site"] = 1
@@ -242,16 +257,12 @@ t1_neutral_only.loc[t1_neutral_only["og_han"]==2, "t1_book_spread"] = t1_neutral
 t1_neutral_only.loc[t1_neutral_only["og_han"]==3, "real_game"] = 1
 t1_neutral_only.drop(["og_han"],axis=1)
 
-#print(t1_home_only[["t1_book_spread", "t1_team", "t2_team", "t1_home", "neutral_site"]].head(10))
-#print(t1_away_only[["t1_book_spread", "t1_team", "t2_team", "t1_home", "neutral_site"]].head(10))
-#print(t1_neutral_only[["t1_book_spread", "t1_team", "t2_team", "t1_home", "neutral_site"]].head(10))
-
-
+# predict the three dfs
 pdiff_preds_ho = predict_with_model(pdiff_model, pdiff_vars, t1_home_only)
 pdiff_preds_ao = predict_with_model(pdiff_model, pdiff_vars, t1_away_only)
 pdiff_preds_no = predict_with_model(pdiff_model, pdiff_vars, t1_neutral_only)
 
-# --- Create results DataFrame ---
+# create results dfs
 t1_home_only_short = t1_home_only[["t1_team", "t2_team", "t1_home", "neutral_site", "game_id", "real_game"]]
 results_df_ho = t1_home_only_short.copy()
 results_df_ho["pdiff_pred"] = pdiff_preds_ho
@@ -261,12 +272,11 @@ results_df_ao["pdiff_pred"] = pdiff_preds_ao
 t1_neutral_only_short = t1_neutral_only[["t1_team", "t2_team", "t1_home", "neutral_site", "game_id", "real_game"]]
 results_df_no = t1_neutral_only_short.copy()
 results_df_no["pdiff_pred"] = pdiff_preds_no
-
-
+# concatenate dfs together
 results_tw_theor = pd.concat([results_df_ho, results_df_ao, results_df_no], axis=0, ignore_index=True)
 
 
-# --- Normalize each row: prefer t1_home==1 or t1_team > t2_team ---
+# bring gameids to same side
 def normalize_row(row):
     keep_original = ((row["t1_home"] == 1) or ((row["neutral_site"] == 1) and (row["t1_team"] > row["t2_team"])))
     if keep_original:
@@ -279,31 +289,31 @@ def normalize_row(row):
         else:
             row["t1_home"] = (1-row["t1_home"])
         return row
-
 normalized_df_tw_theor = results_tw_theor.apply(normalize_row, axis=1)
 
-# --- Aggregate by game_id (average predictions) ---
+# aggregate each pair of gameids
 aggregated_df_tw_theor = normalized_df_tw_theor.groupby(
     ["game_id", "t1_team", "t2_team", "t1_home", "neutral_site", "real_game"], as_index=False
 ).agg({
     "pdiff_pred": "mean"
 })
-
+# make cols cleaner
 aggregated_df_tw_theor["pdiff_pred"] = round(aggregated_df_tw_theor["pdiff_pred"],2)
 aggregated_df_tw_theor["new_win"] = (aggregated_df_tw_theor["pdiff_pred"] > 0).astype(int)
 
 
-
+# merge to theoretical data, if in dataset
 theor_prepped = theor_prepped.merge(aggregated_df_tw_theor, on=["t1_team", "t2_team", "t1_home", "neutral_site"],
                                      how="left")
 
 
-
+# change cols in theoretical data for pdiff and win to that of new predictions for those rows
 theor_prepped.loc[theor_prepped["pdiff_pred"].notna(), "pred_t1_point_diff"] = theor_prepped["pdiff_pred"]
 theor_prepped["point_margin"] = abs(theor_prepped["pred_t1_point_diff"])
 theor_prepped.loc[theor_prepped["new_win"].notna(), "t1_win"] = theor_prepped["new_win"]
 theor_prepped = theor_prepped.drop(["pdiff_pred", "new_win"], axis =1)
 
+# change who the winning and losing team cols are in case that changed
 theor_prepped.loc[theor_prepped["pred_t1_point_diff"]>0, "winning_team"] = theor_prepped["t1_team"]
 theor_prepped.loc[theor_prepped["pred_t1_point_diff"]<=0, "winning_team"] = theor_prepped["t2_team"]
 theor_prepped.loc[theor_prepped["pred_t1_point_diff"]<=0, "losing_team"] = theor_prepped["t1_team"]
@@ -320,23 +330,12 @@ theor_prepped.loc[theor_prepped["pred_t1_point_diff"]>0, "losing_color"] = theor
 
 
 
-
-#print(theor_prepped.loc[theor_prepped["pdiff_pred"].notna(),["point_margin", "pdiff_pred", "pred_t1_point_diff", "t1_win"]].head(50))
-
-#print(aggregated_df_tw_theor.head(50))
-
-
-
-
-
-
-
-# st page width set
+# set page width set
 st.set_page_config(layout="wide")
 
 
 
-# welcome page format
+### WELCOME PAGE
 def welcome_page():
   
   st.title('Czar College Football')
@@ -412,7 +411,7 @@ def welcome_page():
 
 
 
-# historical betting retults page format
+### HISTORICAL RESULTS PAGE
 def historical_results_page():
     
     st.title('Model Performance on Historical Test Data')
@@ -423,6 +422,7 @@ def historical_results_page():
 
     df = historical_data
 
+    # convert point diff into spread
     df['book_t1_spread'] = df['book_t1_point_diff']*-1
 
     # Clean column names to remove leading/trailing spaces
@@ -451,9 +451,9 @@ def historical_results_page():
 
     with col1:
       
+        # create filters
         st.write("### Filters")
         
-        # Create dropdowns for filtering options on the left column
         team_options = st.selectbox(
             "Team", 
             options=["All"] + unique_teams_sorted,  
@@ -556,7 +556,6 @@ def historical_results_page():
         # Apply filters based on selections
         filtered_df = df
 
-        # Apply team filter (home_team or away_team)
         if team_options != "All":
             filtered_df = filtered_df[filtered_df['home_team'].eq(team_options) | filtered_df['away_team'].eq(team_options)]
         else:
@@ -890,7 +889,7 @@ def historical_results_page():
 
                 
                 
-                
+### PLAYOFF PREDICTION PAGE               
 def playoff_page():
   
   # Streamlit App
@@ -1619,7 +1618,7 @@ def playoff_page():
                 
                 
 
-# define game predictor page
+# GAME PREDICTOR PAGE
 def game_predictor_page():
   
   
@@ -1638,10 +1637,10 @@ def game_predictor_page():
       
       st.write("### Filters")
       
-      # Step 1: Select Away Team
+      # Select Away Team
       away_team = st.selectbox("Select Away Team", sorted(theor_prepped["t2_team"].dropna().unique()), index = 57)
       
-      # Step 2: Select Home Team
+      # Select Home Team
       home_team = st.selectbox("Select Home Team", sorted(theor_prepped["t1_team"].dropna().unique()), index = 75)
       
       

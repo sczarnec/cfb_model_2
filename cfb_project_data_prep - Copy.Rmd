@@ -1771,7 +1771,9 @@ t2_game_info_metrics = t1_game_info_metrics %>%
 
 # join those t2 metrics to the t1 df (because teams appear on both sides each week)
 all_df = left_join(t1_game_info_metrics, t2_game_info_metrics, by = c('t2_team', 'week', 'season')) %>% 
-  mutate(neutral_site = ifelse(neutral_site, 1, 0)) %>% 
+    mutate(t1_home = ifelse(neutral_site, 0, t1_home),
+         t2_home = ifelse(neutral_site, 0, t2_home),
+         neutral_site = ifelse(neutral_site, 1, 0)) %>% 
   mutate(t1_rol_record_ha_l20 = ifelse(neutral_site == 1, t1_rol_record_l20, t1_rol_record_ha_l20),
          t1_rol_pf_pg_ha_l20 = ifelse(neutral_site == 1, t1_rol_pf_pg_l20, t1_rol_pf_pg_ha_l20),
          t1_rol_pa_pg_ha_l20 = ifelse(neutral_site == 1, t1_rol_pa_pg_l20, t1_rol_pa_pg_ha_l20),
