@@ -30,186 +30,6 @@ source("cfb_app_helpers.R")
 ```
 
 
-
-<br>
-
-
-## Merge Betting Data with cfbfastR
-
-### Load in Betting Data
-
-
-```{r}
-
-# # betting line data
-# historical_odds_orig = read.csv("overall_df.csv")
-
-```
-
-```{r}
-
-
-# Mapping each college name manually
-
-# target_names <- c(
-#   "Hawai'i", "Jacksonville State", "Tennessee-Martin", "Wake Forest", "Maine", "Central Michigan", 
-#   "Charlotte", "Indiana", "Appalachian State", "North Carolina State", "Utah State", "Rice", 
-#   "Vanderbilt", "Southern Utah", "Minnesota", "New Mexico", "UNLV", "Eastern Michigan", 
-#   "Ball State", "Syracuse", "Temple", "Buffalo", "Michigan State", "Baylor", 
-#   "Colorado State", "Arkansas State", "Stanford", "Nevada", "Boston College", "Bowling Green", 
-#   "South Alabama", "Maryland", "Fordham", "Houston", "Michigan", "Purdue", 
-#   "West Virginia", "Northwestern", "Louisiana", "Virginia Tech", "Villanova", "Air Force", 
-#   "Rutgers", "LSU", "Ohio", "Miami (OH)", "Oklahoma State", "Virginia", 
-#   "Murray State", "Kent State", "UCLA", "Louisiana Tech", "UC Davis", "Georgia", 
-#   "James Madison", "Savannah State", "Troy", "North Carolina Central", "Florida A&M", "Florida Atlantic", 
-#   "East Carolina", "VMI", "UTSA", "Middle Tennessee", "OK Panhandle", "East Tennessee State", 
-#   "Tulsa", "Memphis", "Kansas", "SMU", "UCF", "Louisiana-Monroe", 
-#   "Towson", "Southern Miss", "UMass", "Stephen F. Austin", "Washington State", "UTEP", 
-#   "Nebraska", "Coastal Carolina", "Alabama", "TCU", "Northern Iowa", "New Hampshire", 
-#   "Auburn", "BYU", "Wyoming", "Northern Arizona", "Old Dominion", "Notre Dame", 
-#   "Florida State", "Prairie View A&M", "Pittsburgh", "Charleston Southern", "Mercer", "Akron", 
-#   "Kentucky", "Navy", "Central Connecticut State", "Wofford", "San Jose State", "Idaho", 
-#   "Idaho State", "Elon", "North Carolina A&T", "Marshall", "North Texas", "Point University", 
-#   "McNeese", "Georgia Southern", "South Carolina", "South Florida", "Jacksonville", "Iowa", 
-#   "Illinois", "Tulane", "Sacramento State", "Texas Tech", "California", "Grambling State", 
-#   "Clemson", "Georgia State", "North Dakota State", "Toledo", "Monmouth", "San Diego State", 
-#   "Northern Colorado", "New Mexico State", "Western Michigan", "Texas State", "Oklahoma", "Sam Houston", 
-#   "Portland State", "USC", "Ole Miss", "Wagner", "Duquesne", "Gardner-Webb", 
-#   "Western Illinois", "Tennessee", "Boise State", "Missouri", "Colorado", "Nicholls State", 
-#   "Missouri State", "Houston Christian", "Texas A&M", "Arizona", "Alcorn State", "Georgia Tech", 
-#   "Kennesaw State", "Robert Morris", "Incarnate Word", "Arizona State", "UConn", "Missouri S&T", 
-#   "Duke", "Oregon", "Fresno State", "Lafayette", "Western Kentucky", "Miami (FL)", 
-#   "Oregon State", "Abilene Christian", "Iowa State", "Wisconsin", "Kansas State", "Penn State", 
-#   "Mississippi State", "Utah", "Texas Southern", "Clark Atlanta", "Presbyterian", "Florida", 
-#   "Tennessee Tech", "Northwestern State", "Morgan State", "The Citadel", "Central Arkansas", "Hampton", 
-#   "Chattanooga", "Austin Peay", "Tennessee State", "North Dakota", "Arkansas", "Bethune-Cookman", 
-#   "Youngstown State", "UAB", "Eastern Washington", "Stony Brook", "Southeastern Louisiana", "Louisville", 
-#   "Eastern Illinois", "Indiana State", "Morehead State", "Arkansas-Pine Bluff", "Montana", "Army", 
-#   "Alabama A&M", "Southern University", "Texas", "St. Francis (PA)", "Western Carolina", "Ohio State", 
-#   "Weber State", "University at Albany", "South Dakota", "South Dakota State", "Lamar", "Campbell", 
-#   "Lehigh", "Norfolk State", "Florida International", "Colgate", "Drake", "Bucknell", 
-#   "Montana State", "Illinois State", "Cincinnati", "Eastern Kentucky", "Jackson State", "Cal Poly", 
-#   "South Carolina State", "Southeast Missouri State", "Delaware", "Reinhardt", "Liberty", "North Alabama", 
-#   "LIU", "Southern Illinois", "Yale", "Tarleton State", "Utah Tech", "Samford", 
-#   "Davidson", "Bryant", "East Texas A&M", "Rhode Island", "Tusculum", "Delaware State", 
-#   "Sacred Heart", "Lindenwood"
-# )
-# 
-# mapped_names <- c(
-#   "Hawai'i", "Jacksonville State", "", "Wake Forest", "", "Central Michigan", 
-#   "Charlotte", "Indiana", "App State", "NC State", "Utah State", "Rice", 
-#   "Vanderbilt", "", "Minnesota", "New Mexico", "UNLV", "Eastern Michigan", 
-#   "Ball State", "Syracuse", "Temple", "Buffalo", "Michigan State", "Baylor", 
-#   "Colorado State", "Arkansas State", "Stanford", "Nevada", "Boston College", "Bowling Green", 
-#   "South Alabama", "Maryland", "", "Houston", "Michigan", "Purdue", 
-#   "West Virginia", "Northwestern", "Louisiana", "Virginia Tech", "", "Air Force", 
-#   "Rutgers", "LSU", "Ohio", "Miami (OH)", "Oklahoma State", "Virginia", 
-#   "", "Kent State", "UCLA", "Louisiana Tech", "", "Georgia", 
-#   "James Madison", "", "Troy", "", "", "Florida Atlantic", 
-#   "East Carolina", "", "UTSA", "Middle Tennessee", "", "", 
-#   "Tulsa", "Memphis", "Kansas", "SMU", "UCF", "UL Monroe", 
-#   "", "Southern Miss", "Massachusetts", "", "Washington State", "UTEP", 
-#   "Nebraska", "Coastal Carolina", "Alabama", "TCU", "", "", 
-#   "Auburn", "BYU", "Wyoming", "", "Old Dominion", "Notre Dame", 
-#   "Florida State", "", "Pittsburgh", "", "", "Akron", 
-#   "Kentucky", "Navy", "", "", "San Jose State", "Idaho", 
-#   "", "", "", "Marshall", "North Texas", "", 
-#   "", "Georgia Southern", "South Carolina", "South Florida", "", "Iowa", 
-#   "Illinois", "Tulane", "", "Texas Tech", "California", "", 
-#   "Clemson", "Georgia State", "", "Toledo", "", "San Diego State", 
-#   "", "New Mexico State", "Western Michigan", "Texas State", "Oklahoma", "Sam Houston", 
-#   "", "USC", "Ole Miss", "", "", "", 
-#   "", "Tennessee", "Boise State", "Missouri", "Colorado", "", 
-#   "", "Houston Christian", "Texas A&M", "Arizona", "", "Georgia Tech", 
-#   "Kennesaw State", "", "", "Arizona State", "UConn", "", 
-#   "Duke", "Oregon", "Fresno State", "", "Western Kentucky", "Miami", 
-#   "Oregon State", "", "Iowa State", "Wisconsin", "Kansas State", "Penn State", 
-#   "Mississippi State", "Utah", "", "", "", "Florida", 
-#   "", "", "", "", "", "", 
-#   "", "Austin Peay", "", "", "Arkansas", "Bethune-Cookman", 
-#   "", "UAB", "", "", "", "Louisville", 
-#   "", "", "", "", "Montana", "Army", 
-#   "", "", "Texas", "", "", "Ohio State", 
-#   "", "", "", "", "", "",
-#   "", "", "Florida International", "", "", "", 
-#   "", "", "Cincinnati", "", "", "", 
-#   "", "", "", "", "Liberty", "", 
-#   "", "", "", "", "", "", 
-#   "", "", "", "", "", "", "", ""
-# )
-# 
-# 
-# 
-# 
-# # combine target names and mapped names into a data frame, each in its own row
-# # create this data frame
-# name_change_list_t1 = data.frame(team_one = target_names, team1 = mapped_names) 
-# name_change_list_t2 = data.frame(team_two = target_names, team2 = mapped_names) 
-# 
-# # make betting line college names same as cfbfastr
-# historical_odds = historical_odds_orig %>% 
-#   select(team_one, team_two, week, season, home_ml_odds_15, away_ml_odds_15, home_spread_odds_15, home_spread_value_15, away_spread_odds_15, away_spread_value_15, over_odds_15, under_odds_15, over_value_15, under_value_15)
-# historical_odds = left_join(historical_odds, name_change_list_t1, by = "team_one")
-# historical_odds = left_join(historical_odds, name_change_list_t2, by = "team_two")
-# historical_odds_t1 = historical_odds %>% select(-team_one, -team_two)
-# historical_odds_t2 = historical_odds_t1 %>% rename(team2 = team1, team1 = team2)
-# historical_odds = bind_rows(historical_odds_t1, historical_odds_t2)
-# historical_odds = historical_odds %>% rename(t1_team = team1, t2_team = team2)
-# historical_odds = historical_odds %>% 
-#   rename(home_ml_odds = home_ml_odds_15,
-#          away_ml_odds = away_ml_odds_15,
-#          home_spread_val = home_spread_value_15,
-#          home_spread_odds = home_spread_odds_15,
-#          away_spread_val = away_spread_value_15,
-#          away_spread_odds = away_spread_odds_15,
-#          over_odds = over_odds_15,
-#          over_val = over_value_15,
-#          under_odds = under_odds_15,
-#          under_val = under_value_15
-#          ) 
-# 
-# 
-# 
-# # Keep only non-duplicates
-# duplicates = duplicated(historical_odds)
-# historical_odds <- historical_odds[!duplicates, ]
-
-
-
-
-
-```
-
-```{r}
-
-
-# historical_odds_mod = historical_odds
-# 
-# 
-# 
-# # create mappings for each week so they can be joined to cfbfastr
-# historical_odds_mod = historical_odds_mod %>% 
-#   mutate(type = ifelse(season %in% c(2016,2017,2018, 2021, 2022, 2023) & (week < 14 | week == 15), "reg", ifelse(
-#                        season %in% c(2016,2017,2018, 2021, 2022, 2023) & week == 14, "cc", ifelse(
-#                        season %in% c(2016,2017,2018, 2021, 2022, 2023), "post", ifelse(
-#                        season %in% c(2019,2024,2025) & (week < 15 | week == 16), "reg", ifelse(
-#                        season %in% c(2019,2024,2025) & week == 15, "cc", ifelse(
-#                        season %in% c(2019,2024,2025), "post", ifelse(
-#                        season == 2020 & week <= 15, "reg", ifelse(
-#                        season == 2020, "post",
-#                        "nothing"
-#                        )
-#                        ) 
-#   ))))))) %>% 
-#   select(-c(week))
-  
-  
-  
-  # 2019 15 week cc no 16 army navy, same for 2020, same for 2024
-  # before 2019 14 week cc 15 navy, same for 2021-23
-
-```
-
 <br>
 
 
@@ -219,7 +39,6 @@ source("cfb_app_helpers.R")
 
 # model data
 cfb_data = read.csv(gzfile("cfb_model_data_prep_full_check.csv.gz"))
-
 
 
 ```
@@ -260,85 +79,11 @@ model_prepped_orig = fbs_only %>%
   mutate(across(starts_with("t2_rol"), ~ ifelse(is.na(.), lag(.), .))) %>% 
   ungroup() %>% 
   select(-c(rol_win_l1, "rol_loss_l1")) %>% 
-  filter(week > 2)
-
-
-
-### ml???
-
-
-
-```
-
-
-<br>
-
-### Join the two
-
-```{r}
-
-
-
-# # create same mappings for cfbfastR data
-# join_bet = model_prepped_orig %>% 
-#   mutate(type = ifelse(season %in% c(2015,2016,2017,2018,2021,2022,2023) & (week<14 | week == 15), "reg", ifelse(
-#                        season %in% c(2015,2016,2017,2018,2021,2022,2023) & week == 14, "cc", ifelse(
-#                        season %in% c(2015,2016,2017,2018,2021,2022,2023), "post", ifelse(
-#                        season %in% c(2019, 2020, 2024, 2025) & week < 15, "reg", ifelse(
-#                        season %in% c(2019, 2020, 2024, 2025) & week == 15, "cc", ifelse(
-#                        season %in% c(2019, 2020, 2024, 2025), "post",
-#                        "nothing"
-#                        )
-#                        )
-#                        )
-#                        )
-#   )))
+  filter(week > 3)
 
 
 
 
-# 
-# # make sure duplicate unique games are out of betting data
-# fine = historical_odds_mod[!(duplicated(historical_odds_mod[, c("type", "season", "t1_team", "t2_team")]) |
-#                            duplicated(historical_odds_mod[, c("type", "season", "t1_team", "t2_team")], fromLast = TRUE)), ]
-# dup = historical_odds_mod[(duplicated(historical_odds_mod[, c("type", "season", "t1_team", "t2_team")]) |
-#                            duplicated(historical_odds_mod[, c("type", "season", "t1_team", "t2_team")], fromLast = TRUE)), ]
-# dup = dup %>% filter(!is.na(home_spread_odds))
-# dup = dup[(duplicated(dup[,c("type", "season", "t1_team", "t2_team")])),]
-# back = bind_rows(fine, dup)
-# 
-
-# 
-# 
-# # join betting data with our predictions
-# join_bet = left_join(join_bet, back, by = c("t1_team", "t2_team", "type", "season")) %>% 
-#   select(-c(type)) %>% 
-#   mutate(t1_ml_odds = ifelse(t1_home == 1, home_ml_odds, away_ml_odds),
-#          t1_spread_val = ifelse(t1_home == 1, home_spread_val, away_spread_val),
-#          t1_spread_odds = ifelse(t1_home == 1, home_spread_odds, away_spread_odds),
-#          t2_ml_odds = ifelse(t1_home == 0, home_ml_odds, away_ml_odds),
-#          t2_spread_val = ifelse(t1_home == 0, home_spread_val, away_spread_val),
-#          t2_spread_odds = ifelse(t1_home == 0, home_spread_odds, away_spread_odds)) %>% 
-#   select(-c(home_ml_odds, away_ml_odds, home_spread_val, away_spread_val, home_spread_odds, away_spread_odds)) %>% 
-#   mutate(t1_spread_odds = ifelse(is.na(t1_spread_odds), -110, t1_spread_odds),
-#          t2_spread_odds = ifelse(is.na(t2_spread_odds), -110, t2_spread_odds),
-#          over_odds = ifelse(is.na(over_odds), -110, over_odds),
-#          under_odds = ifelse(is.na(under_odds), -110, under_odds))
-
-
-
-
-
-
-
-
-#### FOR ML MODEL, THROW OUT GAMES WHERE BOOK SPREAD NOT CLOSE TOGETHER, MAYBE 3-5 P1 RANGE
-
-
-# View(model_prepped_moved %>% filter(neutral_site != 1, season>=2021) %>% select(t1_book_spread, t1_spread_val) %>% mutate(diff = abs(t1_spread_val-t1_book_spread)) %>% group_by(diff) %>% summarize(n = n(), perc = round(n()/dim(model_prepped_moved %>% filter(season>=2021&neutral_site!=1))[1],2)))
-# > 
-# > View(model_prepped_moved %>% filter(neutral_site != 1, season>=2021) %>% select(t1_book_spread, t1_spread_val, t1_team, t2_team, season, t1_ml_odds) %>% mutate(diff = abs(t1_spread_val-t1_book_spread)))
-# 
 
 ```
 
@@ -374,80 +119,72 @@ model_prepped_moved = model_prepped_moved %>% select(-c(wind_speed, temperature,
 ### Omit Remaining NA Rows
 ```{r}
 
-# omit if feature cols are null
-#cols_to_ignore = c(grep("_val", names(model_prepped_moved)), grep("_odds", names(model_prepped_moved)))
-#cols_to_check <- setdiff(seq_along(model_prepped_moved), cols_to_ignore)
-#model_prepped_omit <- model_prepped_moved[complete.cases(model_prepped_moved[, cols_to_check]), ]
+# NA omitted df (not needed anymore due to XGBoost handling NAs)
 model_prepped_omit = model_prepped_moved
-#model_prepped_deleted <- model_prepped_moved[!complete.cases(model_prepped_moved[, cols_to_check]), ] %>% filter(season>=2021)
 
-
-
-#model_prepped_deleted %>% group_by(season, week) %>% summarise(count = n())
-
-
-# maybe get rid of omit???
 
 # this week's matchups (save for app)
 model_prepped_this_week = model_prepped_omit %>% filter(season == current_season & week == current_week)
 #write.csv(model_prepped_this_week, "model_prepped_this_week.csv")
 
-# filt_mpo = model_prepped_omit %>% filter(season>=2021)
-# 
-# dim(filt_mpo[is.na(filt_mpo["t1_moneyline"]),])[1] / dim(filt_mpo)[1]
-# dim(filt_mpo[is.na(filt_mpo["t1_ml_odds"]),])[1] / dim(filt_mpo)[1]
-# dim(filt_mpo[(is.na(filt_mpo["t1_ml_odds"])&is.na(filt_mpo["t1_moneyline"])),])[1] / dim(filt_mpo)[1]
-# 
-# dim(filt_mpo[is.na(filt_mpo["t1_book_spread"]),])[1] / dim(filt_mpo)[1]
-# dim(filt_mpo[is.na(filt_mpo["t1_spread_val"]),])[1] / dim(filt_mpo)[1]
-# 
-# dim(filt_mpo[is.na(filt_mpo["book_over_under"]),])[1] / dim(filt_mpo)[1]
-# dim(filt_mpo[is.na(filt_mpo["over_val"]),])[1] / dim(filt_mpo)[1]
-# 
-# dim(filt_mpo)[1]
-# dim(filt_mpo)[1]*.032
-
-
-#quantile(filt_mpo$t1_spread_odds, probs = .9)
-
-
-#ecdf(filt_mpo$over_odds)(-115)
-
 
 
 ```
 
 
-
+<br> 
 
 
 ## Run Models
 
-### Point Diff
+### Cover Probability
 
 ```{r}
 
-
 # tuned parameters
-parameters = list(eta = .05,
-              max.depth = 3, # Set max depth
-              min_child_weight = 7, # Set minimum number of samples in node to split
-              gamma = .05, # Set minimum loss reduction for split
-              subsample = .8, # Set proportion of training data to use in tree
-              colsample_bytree = 1,
+params = list(eta = .03,
+              max.depth = 4, 
+              min_child_weight = 4, 
+              gamma = .05, 
+              subsample = .7, 
+              colsample_bytree = .8,
               
               
-              nrounds = 110 , # Set number of rounds
-              early_stopping_rounds = 30, # Set number of rounds to stop at if there is no improvement)
+              nrounds = 204 ,
+              early_stopping_rounds = 15, 
               
-              verbose = 0, # 1 - Prints out fit
-              nthread = 1,
+              verbose = 0, 
+              nthread = 8,
               
-              objective = "reg:squarederror",
-              eval_metric = "rmse")
+              objective = "binary:logistic",
+              eval_metric = "error")
 
-# the pd model
-pd_model = model_func("t1_point_diff", model_prepped_omit, 6, 2024, 23, 2015, 1, parameters)
+# parameters for var selection
+params_tune = list(eta = .065,
+              max.depth = 4, 
+              min_child_weight = 4, 
+              gamma = .05, 
+              subsample = .7, 
+              colsample_bytree = .8,
+              
+              
+              nrounds = 68 , 
+              early_stopping_rounds = 15, 
+              
+              verbose = 0, 
+              nthread = 8,
+              
+              objective = "binary:logistic",
+              eval_metric = "error")
+
+# the cp model
+cp_model = model_func("actual_t1_cover", model_prepped_omit, 6, 2024, 23, 2015, 1, params, params_tune)
+
+
+# write out
+write.csv(cp_model, "cp_model_21to24.csv")
+#cp_model = read.csv("cp_model_21to24.csv")
+
 
 
 ```
@@ -455,50 +192,45 @@ pd_model = model_func("t1_point_diff", model_prepped_omit, 6, 2024, 23, 2015, 1,
 
 ```{r}
 
+
 # Record betting accuracy
+pred_dat_final_cp = cp_model
 
 
-pred_dat_final_pd = pd_model
-#write.csv(pd_model, "dynamic_vi_model.csv")
-
-
-# modify col names and calculate predicted scores
-pred_dat_final_pd = pred_dat_final_pd %>% 
-  rename(pred_t1_point_diff = preds,
-         actual_t1_point_diff = oc_var)
+# modify col names and calculate predicted wp
+pred_dat_final_cp = pred_dat_final_cp %>% 
+  rename(pred_t1_cp = preds,
+         actual_t1_cover = oc_var)
 
 
 
 
-### SWITCH TO HOME/AWAY EVENTUALLY
-
-pred_dat_final_pd$id_max = pmax(pred_dat_final_pd$t1_team, pred_dat_final_pd$t2_team)
-pred_dat_final_pd$id_min = pmin(pred_dat_final_pd$t1_team, pred_dat_final_pd$t2_team)
+# id mins and maxs for flipping
+pred_dat_final_cp$id_max = pmax(pred_dat_final_cp$t1_team, pred_dat_final_cp$t2_team)
+pred_dat_final_cp$id_min = pmin(pred_dat_final_cp$t1_team, pred_dat_final_cp$t2_team)
 
 
 
 
 # flip duplicate games and aggregate
-merge_preds_pd = pred_dat_final_pd %>% 
-  mutate(pred_t1_point_diff = ifelse(t1_team == id_max,pred_t1_point_diff, 
-                                     pred_t1_point_diff*-1)) %>% 
+merge_preds_cp = pred_dat_final_cp %>% 
+  mutate(pred_t1_cp = ifelse(t1_team == id_max,pred_t1_cp, 
+                                     1 - pred_t1_cp)) %>% 
   group_by(game_id) %>% 
-  summarise(pred_t1_point_diff = mean(pred_t1_point_diff))
+  summarise(pred_t1_cp = mean(pred_t1_cp))
 
-pred_dat_final_pd = pred_dat_final_pd %>% 
+pred_dat_final_cp = pred_dat_final_cp %>% 
   filter(t1_team == id_max) %>% 
-  select(-c(pred_t1_point_diff)) %>% 
-  left_join(merge_preds_pd, by = c("game_id"))%>% 
-  mutate(pred_t1_point_diff = round(pred_t1_point_diff, 2)) %>% 
+  select(-c(pred_t1_cp)) %>% 
+  left_join(merge_preds_cp, by = c("game_id"))%>% 
+  mutate(pred_t1_cp = round(pred_t1_cp, 4),
+         pred_t1_cover = ifelse(pred_t1_cp > .5, 1, 0)) %>% 
   select(-c(id_min, id_max))
 
 
 
-
-write.csv(pred_dat_final_pd, "pred_dat_final_pd.csv")
-
-
-
+# write out
+write.csv(pred_dat_final_cp, "pred_dat_final_cp_21to24.csv")
 
 
 ```
@@ -510,28 +242,47 @@ write.csv(pred_dat_final_pd, "pred_dat_final_pd.csv")
 
 ```{r}
 
-
 # tuned parameters
-parameters = list(eta = .05,
-              max.depth = 3, # Set max depth
-              min_child_weight = 7, # Set minimum number of samples in node to split
-              gamma = .05, # Set minimum loss reduction for split
+params = list(eta = .03,
+              max.depth = 4, # Set max depth
+              min_child_weight = 6, # Set minimum number of samples in node to split
+              gamma = .04, # Set minimum loss reduction for split
               subsample = .8, # Set proportion of training data to use in tree
-              colsample_bytree = 1,
+              colsample_bytree = .9,
               
               
-              nrounds = 110 , # Set number of rounds
-              early_stopping_rounds = 30, # Set number of rounds to stop at if there is no improvement)
+              nrounds = 185 , # Set number of rounds
+              early_stopping_rounds = 15, # Set number of rounds to stop at if there is no improvement)
               
               verbose = 0, # 1 - Prints out fit
-              nthread = 1,
+              nthread = 8,
               
               objective = "binary:logistic",
-              eval_metric = "logloss")
+              eval_metric = "error")
+
+# final params var select
+params_tune = list(eta = .06,
+              max.depth = 4, # Set max depth
+              min_child_weight = 6, # Set minimum number of samples in node to split
+              gamma = .04, # Set minimum loss reduction for split
+              subsample = .8, # Set proportion of training data to use in tree
+              colsample_bytree = .9,
+              
+              
+              nrounds = 61 , # Set number of rounds
+              early_stopping_rounds = 15, # Set number of rounds to stop at if there is no improvement)
+              
+              verbose = 0, # 1 - Prints out fit
+              nthread = 8,
+              
+              objective = "binary:logistic",
+              eval_metric = "error")
 
 # the wp model
-wp_model = model_func("t1_win", model_prepped_omit, 6, 2024, 23, 2015, 1, parameters)
-#write.csv(wp_model, "wp_model_first_run.csv")
+wp_model = model_func("t1_win", model_prepped_omit, 6, 2024, 23, 2015, 1, params, params_tune)
+
+# write out
+write.csv(wp_model, "wp_model_21to24.csv")
 
 ```
 
@@ -550,8 +301,7 @@ pred_dat_final_wp = pred_dat_final_wp %>%
 
 
 
-### SWITCH TO HOME/AWAY EVENTUALLY
-
+# id mins and maxs for flipping
 pred_dat_final_wp$id_max = pmax(pred_dat_final_wp$t1_team, pred_dat_final_wp$t2_team)
 pred_dat_final_wp$id_min = pmin(pred_dat_final_wp$t1_team, pred_dat_final_wp$t2_team)
 
@@ -574,8 +324,8 @@ pred_dat_final_wp = pred_dat_final_wp %>%
   select(-c(id_min, id_max))
 
 
-
-write.csv(pred_dat_final_wp, "pred_dat_final_wp.csv")
+# write out
+write.csv(pred_dat_final_wp, "pred_dat_final_wp_21to24.csv")
 
 
 ```
@@ -587,58 +337,92 @@ write.csv(pred_dat_final_wp, "pred_dat_final_wp.csv")
 
 ```{r}
 
-
 # tuned parameters
-parameters = list(eta = .05,
-              max.depth = 3, # Set max depth
-              min_child_weight = 7, # Set minimum number of samples in node to split
-              gamma = .05, # Set minimum loss reduction for split
-              subsample = .8, # Set proportion of training data to use in tree
-              colsample_bytree = 1,
+parameters = list(
+              eta = 0.05, 
+              
+              max.depth = 4, 
+              min_child_weight = 5, 
+              gamma = .04, 
+              subsample = .8, 
+              colsample_bytree = .9,    
               
               
-              nrounds = 110 , # Set number of rounds
-              early_stopping_rounds = 30, # Set number of rounds to stop at if there is no improvement)
+              nrounds = 149 , 
+              early_stopping_rounds = 15, 
               
-              verbose = 0, # 1 - Prints out fit
-              nthread = 1,
+              verbose = 0, 
+              nthread = 8,
               
-              objective = "reg:squarederror",
-              eval_metric = "rmse")
+              objective = "binary:logistic",
+              eval_metric = "error")
 
-# the pd model
-tp_model = model_func("total_points", model_prepped_omit, 6, 2024, 23, 2015, 1, parameters)
-#write.csv(tp_model, "tp_model_test.csv")
+# parameters for var selection
+params_tune = list(
+              eta = 0.06, 
+              
+              max.depth = 4, 
+              min_child_weight = 5, 
+              gamma = .04, 
+              subsample = .8, 
+              colsample_bytree = .9,    
+              
+              
+              nrounds = 69 , 
+              early_stopping_rounds = 15, 
+              
+              verbose = 0, 
+              nthread = 8,
+              
+              objective = "binary:logistic",
+              eval_metric = "error")
+
+# the wp model
+op_model = model_func("actual_over", model_prepped_omit, 6, 2024, 23, 2015, 1, parameters, params_tune)
+
+# write out
+write.csv(op_model, "op_model_21to24.csv")
+
 
 ```
 
 ```{r}
 
 # Record betting accuracy
-
-pred_dat_final_tp = tp_model
+pred_dat_final_op = op_model
 
 
 # modify col names and calculate predicted wp
-pred_dat_final_tp = pred_dat_final_tp %>% 
-  rename(pred_tp = preds,
-         actual_tp = oc_var)
+pred_dat_final_op = pred_dat_final_op %>% 
+  rename(pred_op = preds,
+         actual_over = oc_var)
 
+
+
+
+# id mins and maxs for flipping
+pred_dat_final_op$id_max = pmax(pred_dat_final_op$t1_team, pred_dat_final_op$t2_team)
+pred_dat_final_op$id_min = pmin(pred_dat_final_op$t1_team, pred_dat_final_op$t2_team)
 
 
 
 
 # flip duplicate games and aggregate
-pred_dat_final_tp = pred_dat_final_tp %>% 
+merge_preds_op = pred_dat_final_op %>% 
   group_by(game_id) %>% 
-  summarize(pred_tp = mean(pred_tp),
-            actual_tp = mean(actual_tp)) %>% 
-  mutate(pred_tp = round(pred_tp, 2))
+  summarise(pred_op = mean(pred_op))
+
+pred_dat_final_op = pred_dat_final_op %>% 
+  filter(t1_team == id_max) %>% 
+  select(-c(pred_op)) %>% 
+  left_join(merge_preds_op, by = c("game_id"))%>% 
+  mutate(pred_op = round(pred_op, 4),
+         pred_over = ifelse(pred_op > .5, 1, 0)) %>% 
+  select(-c(id_min, id_max, t1_team, t2_team))
 
 
-
-
-write.csv(pred_dat_final_tp, "pred_dat_final_tp.csv")
+# write out
+write.csv(pred_dat_final_op, "pred_dat_final_op_21to24.csv")
 
 
 ```
@@ -647,15 +431,15 @@ write.csv(pred_dat_final_tp, "pred_dat_final_tp.csv")
 
 <br>
 
-## Find Profitability
+## Compute Profitability
 
 ### Join all predictions
 
 ```{r}
 
-pred_dat_final_pd = read.csv("pred_dat_final_pd.csv")[,-1]
-pred_dat_final_tp = read.csv("pred_dat_final_tp.csv")[,-1]
-pred_dat_final_wp = read.csv("pred_dat_final_wp.csv")[,-1]
+pred_dat_final_cp = read.csv("pred_dat_final_cp_21to24.csv")[,-1]
+pred_dat_final_op = read.csv("pred_dat_final_op_21to24.csv")[,-1]
+pred_dat_final_wp = read.csv("pred_dat_final_wp_21to24.csv")[,-1]
 
 
 # select cols to add back
@@ -663,18 +447,19 @@ info_lookup = model_prepped_orig %>% select(t1_book_spread, book_over_under, t1_
 
 
 # join to all preds
-pred_dat_final_pre = pred_dat_final_pd %>% 
+pred_dat_final_pre = pred_dat_final_cp %>% 
   left_join(pred_dat_final_wp, by = c("t1_team", "t2_team", "game_id")) %>% 
-  left_join(pred_dat_final_tp, by = c("game_id")) %>% 
+  left_join(pred_dat_final_op, by = c("game_id")) %>% 
   left_join(info_lookup, by = c("t1_team", "t2_team", "game_id")) 
 
 ```
 
 ```{r}
 
+# flip  all data (t1 becomes t2 and vice versa)
 pred_dat_final_flip = pred_dat_final_pre %>% 
-  mutate(actual_t1_point_diff = actual_t1_point_diff*-1,
-         pred_t1_point_diff = pred_t1_point_diff*-1,
+  mutate(pred_t1_cover = (1-pred_t1_cover),
+         actual_t1_cover = (1-actual_t1_cover),
          actual_t1_win = ifelse(actual_t1_win==1,0,1),
          pred_t1_win = ifelse(pred_t1_win==1,0,1),
          pred_t1_wp = 1-pred_t1_wp,
@@ -698,21 +483,16 @@ pred_dat_final_flip = pred_dat_final_pre %>%
   select(-ends_with("_copy"))
 
 
+# bind flipped and original together (should be 4 rows for each game now)
 pred_dat_final_all = bind_rows(pred_dat_final_pre, pred_dat_final_flip) 
 
-
+# id mins and maxs
 pred_dat_final_all$id_max = pmax(pred_dat_final_all$t1_team, pred_dat_final_all$t2_team)
 pred_dat_final_all$id_min = pmin(pred_dat_final_all$t1_team, pred_dat_final_all$t2_team)
 
-
+# filter out half of those games, just keeping when t1 = id_max
 pred_dat_final_all  = pred_dat_final_all %>% filter(t1_home | (neutral_site == 1 & id_max == t1_team)) %>%
   select(-c(id_max, id_min))
-
-
-
-
-
-
 
 
 ```
@@ -722,17 +502,12 @@ pred_dat_final_all  = pred_dat_final_all %>% filter(t1_home | (neutral_site == 1
 
 ```{r}
 
-  
+
 winnings_calc = pred_dat_final_all  %>% 
   
   
   ### SPREAD
   
-  # cols for if predicted and actual results covered for home
-  mutate(book_t1_point_diff = t1_book_spread*-1) %>% 
-  mutate(pred_t1_cover = ifelse(pred_t1_point_diff > book_t1_point_diff, 1, 0),
-         actual_t1_cover = ifelse(actual_t1_point_diff > book_t1_point_diff, 1, 0)) %>% 
-  select(-c(t1_book_spread)) %>% 
   # if we got spread correct and our return
   mutate(spread_correct = ifelse(pred_t1_cover == actual_t1_cover, 1, 0),
          spread_winnings = ifelse(spread_correct == 1 & actual_t1_cover == 1 & -110 > 0, 
@@ -753,8 +528,8 @@ winnings_calc = pred_dat_final_all  %>%
                                   (1 + abs(-110)/100)/2, 
                             (1 + 100/abs(-110))/2
                             )))) %>%
-  # how much we predicted the book was off
-  mutate(pred_vs_book_point_diff = abs(pred_t1_point_diff - book_t1_point_diff)) %>% 
+  # confidence in prediction
+  mutate(cover_confidence = abs(pred_t1_cp - .5)) %>% 
   
   
   
@@ -766,10 +541,15 @@ winnings_calc = pred_dat_final_all  %>%
   mutate(t1_ml_prob = ifelse(t1_moneyline > 0, 100 / (t1_moneyline + 100), -t1_moneyline / (-t1_moneyline + 100)),
          t2_ml_prob = ifelse(t2_moneyline > 0, 100 / (t2_moneyline + 100), -t2_moneyline / (-t2_moneyline + 100))) %>% 
   # how much value is there
-  mutate(pred_t1_value = ifelse(pred_t1_wp > t1_moneyline, 1, 0),
-         pred_t2_value = ifelse((1 - pred_t1_wp) > t2_moneyline, 1, 0)) %>% 
+  mutate(pred_t1_ml_value = pred_t1_wp - t1_ml_prob,
+         pred_t2_ml_value = (1 - pred_t1_wp) - t2_ml_prob
+         ) %>% 
+  # should we bet on either (is value positive?)
+  mutate(pred_t1_ml_bet = ifelse(pred_t1_ml_value > pred_t2_ml_value & pred_t1_ml_value > 0, 1, 0),
+         pred_t2_ml_bet = ifelse(pred_t2_ml_value > pred_t1_ml_value & pred_t2_ml_value > 0, 1, 0)
+       ) %>% 
   # if we got correct our return
-  mutate(ml_correct = ifelse((pred_t1_value == 1 & actual_t1_win == 1) | (pred_t2_value == 1 & actual_t1_win == 0), 1, 0),
+  mutate(ml_correct = ifelse((pred_t1_ml_bet == 1 & actual_t1_win == 1) | (pred_t2_ml_bet == 1 & actual_t1_win == 0), 1, 0),
          ml_winnings = ifelse(ml_correct == 1 & actual_t1_win == 1 & t1_moneyline > 0, 
                                   1 + abs(t1_moneyline)/100,
                             ifelse(ml_correct == 1 & actual_t1_win == 1,
@@ -778,19 +558,19 @@ winnings_calc = pred_dat_final_all  %>%
                                   1 + abs(t2_moneyline)/100,
                             ifelse(ml_correct == 1,
                                    1 + 100/abs(t2_moneyline),
-                            ifelse(pred_t1_value + pred_t2_value == 0, 1,
+                            ifelse(pred_t1_ml_bet + pred_t2_ml_bet == 0, 1,
                                    0)))))) %>% 
       # average bettor's ml returns
   mutate(naive_ml_winnings = ifelse(actual_t1_win == 1 & t1_moneyline > 0, 
-                                  (1 + abs(t1_ml_odds)/100)/2,
+                                  (1 + abs(t1_moneyline)/100)/2,
                             ifelse(actual_t1_win == 1,
                                    (1 + 100/abs(t1_moneyline))/2,
                             ifelse(t2_moneyline > 0, 
                                   (1 + abs(t2_moneyline)/100)/2, 
                             (1 + 100/abs(t2_moneyline))/2
                             )))) %>%
-  # how much we predicted the book was off
-    mutate(pred_vs_book_ml_value = ifelse(pred_t1_value == 1, round(pred_t1_wp - t1_ml_prob, 4), ifelse(pred_t2_value == 1, round((1-pred_t1_wp) - t2_ml_prob, 4),0))) %>% 
+    # how much we predicted the book was off (best value)
+    mutate(ml_value = ifelse(pred_t1_ml_value > pred_t2_ml_value, pred_t1_ml_value, pred_t2_ml_value)) %>% 
   
   
   
@@ -800,9 +580,6 @@ winnings_calc = pred_dat_final_all  %>%
   
   
   # cols for if predicted and actual results covered for over/under
-  mutate(pred_over = ifelse(pred_tp > book_over_under, 1, 0),
-         actual_over = ifelse(actual_tp > book_over_under, 1, 0)) %>%
-  # if we got spread correct and our return
   mutate(ou_correct = ifelse(pred_over == actual_over, 1, 0),
          ou_winnings = ifelse(ou_correct == 1 & actual_over == 1 & -110 > 0, 
                                   1 + abs(-110)/100,
@@ -821,9 +598,10 @@ winnings_calc = pred_dat_final_all  %>%
                             ifelse(-110 > 0, 
                                   (1 + abs(-110)/100)/2, 
                             (1 + 100/abs(-110))/2
-                            )))) %>%
+                            )))) #%>%
   # how much we predicted the book was off
-  mutate(pred_vs_book_tp = abs(pred_tp - book_over_under))
+  mutate(ou_confidence = abs(pred_op - .5))
+
   
 ```
 
@@ -834,12 +612,19 @@ winnings_calc = pred_dat_final_all  %>%
 
 ```{r}
 
-# mark season ids  for saved df
-mark = winnings_calc %>% arrange(season, week) %>% mutate(order = row_number())
-mark_min_week = mark[1,]$week
-mark_min_season = mark[1,]$season
-mark_max_week = mark[dim(mark)[1],]$week
-mark_max_season = mark[dim(mark)[1],]$season
+write.csv(winnings_calc, "final_prediction_df_21to24.csv")
+
+```
+
+
+```{r}
+
+# # mark season ids  for saved df
+# mark = winnings_calc %>% arrange(season, week) %>% mutate(order = row_number())
+# mark_min_week = mark[1,]$week
+# mark_min_season = mark[1,]$season
+# mark_max_week = mark[dim(mark)[1],]$week
+# mark_max_season = mark[dim(mark)[1],]$season
 
 
 
@@ -860,31 +645,18 @@ mark_max_season = mark[dim(mark)[1],]$season
 
 ```{r}
 
-#
-
+# spread
 sum(winnings_calc$spread_winnings) / length(winnings_calc$spread_winnings)
-
 sum(winnings_calc$naive_spread_winnings) / length(winnings_calc$spread_winnings)
 
 
-
-
-
-
-
+# ml
 sum(winnings_calc$ml_winnings, na.rm = TRUE) / length((winnings_calc %>% filter(!is.na(ml_winnings)))$ml_winnings)
-
 sum(winnings_calc$naive_ml_winnings, na.rm = TRUE) / length((winnings_calc %>% filter(!is.na(ml_winnings)))$ml_winnings)
 
 
-
-
-
-
-
-
+# ou
 sum(winnings_calc$ou_winnings) / length(winnings_calc$ou_winnings)
-
 sum(winnings_calc$naive_ou_winnings) / length(winnings_calc$ou_winnings)
   
 ```

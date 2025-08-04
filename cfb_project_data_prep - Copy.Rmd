@@ -22,6 +22,7 @@ library(zoo)
 
 
 
+
 ## Load Data
 ```{r}
 
@@ -35,7 +36,7 @@ current_week = 23
 
 
 
-full_df = cfbd_game_info(2020, season_type = "regular")
+#full_df = cfbd_game_info(2020, season_type = "regular")
 
 
 ### LOAD IN GBG Data ###
@@ -110,7 +111,7 @@ week_id = game_info %>% select(game_id, week) %>% rename(new_week = week)
 cfb_data_reg_orig = load_cfb_pbp(seasons = c(2015:2024)) 
 cfb_data_reg = cfb_data_reg_orig
 
-
+load_cfb
 
 # create postseason data function
 load_post_data_func = function(year_start, year_end) {

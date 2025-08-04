@@ -13,7 +13,7 @@ import xgboost as xgb
 ## GONNA HAVE TO CHANGE A LOT OF THESE ONCE AUTOMATED
 
 # Read in historical betting data
-historical_data = pd.read_csv("final_prediction_df_test.csv", encoding="utf-8", sep=",", header=0)
+historical_data = pd.read_csv("final_prediction_df803.csv", encoding="utf-8", sep=",", header=0)
 
 
 # load theoretical data
@@ -423,13 +423,15 @@ def historical_results_page():
     df = historical_data
 
     # convert point diff into spread
-    df['book_t1_spread'] = df['book_t1_point_diff']*-1
+    #df['book_t1_spread'] = df['book_t1_point_diff']*-1
 
     # Clean column names to remove leading/trailing spaces
     df.columns = df.columns.str.strip()
 
     # Format "season" as a string
     df['season'] = df['season'].astype(str)
+
+    df['cover_prob_from_50'] = abs(df['pred_t1_cp'] - .5)
 
 
     # Get unique teams and sort them in ascending order (for both t1 and t2)
@@ -482,11 +484,21 @@ def historical_results_page():
 
         # Filter for book_t1_spread (manual number input with bounds)
         # use int and floor/ceiling so the bounds don't round down and exclude outer bound games
-        book_home_spread_lower, book_home_spread_upper = st.slider(
-            "Book Home Spread",
-            min_value=int(math.floor(df['book_t1_spread'].min())),
-            max_value=int(math.ceil(df['book_t1_spread'].max())),
-            value=(int(math.floor(df['book_t1_spread'].min())), int(math.ceil(df['book_t1_spread'].max())))
+        #book_home_spread_lower, book_home_spread_upper = st.slider(
+        #    "Book Home Spread",
+        #    min_value=int(math.floor(df['book_t1_spread'].min())),
+        #    max_value=int(math.ceil(df['book_t1_spread'].max())),
+        #    value=(int(math.floor(df['book_t1_spread'].min())), int(math.ceil(df['book_t1_spread'].max())))
+        #)
+
+        # Filter for book_t1_spread (manual number input with bounds)
+        # use int and floor/ceiling so the bounds don't round down and exclude outer bound games
+        cover_pff_lower, cover_pff_upper = st.slider(
+            "Cover PFF",
+            min_value=float(int(math.floor(df['cover_prob_from_50'].min()))),
+            max_value=float(int(math.ceil(df['cover_prob_from_50'].max()))),
+            value=(float((int(math.floor(df['cover_prob_from_50'].min())))), float(int(math.ceil(df['cover_prob_from_50'].max())))),
+            step = .01
         )
 
         # Filter to ask user whether they want to exclude NAs
@@ -518,13 +530,13 @@ def historical_results_page():
         
         # Filter for pred vs book (manual number input with bounds)
         # use int and floor/ceiling so the bounds don't round down and exclude outer bound games
-        spread_value_lower, spread_value_upper = st.slider(
-            "Our spread compared to sportsbooks'",
-            min_value=float(int(math.floor(df['pred_vs_book_point_diff'].min()))),
-            max_value=float(int(math.ceil(df['pred_vs_book_point_diff'].max()))),
-            value=(float(int(math.floor(df['pred_vs_book_point_diff'].min()))), float(int(math.ceil(df['pred_vs_book_point_diff'].max())))),
-            step=.5
-        )
+        #spread_value_lower, spread_value_upper = st.slider(
+        #    "Our spread compared to sportsbooks'",
+        #    min_value=float(int(math.floor(df['pred_vs_book_point_diff'].min()))),
+        #    max_value=float(int(math.ceil(df['pred_vs_book_point_diff'].max()))),
+        #    value=(float(int(math.floor(df['pred_vs_book_point_diff'].min()))), float(int(math.ceil(df['pred_vs_book_point_diff'].max())))),
+        #    step=.5
+        #)
 
         # Filter for pred vs book (manual number input with bounds)
         # use int and floor/ceiling so the bounds don't round down and exclude outer bound games
@@ -533,18 +545,18 @@ def historical_results_page():
             min_value=float(int(math.floor(df['pred_vs_book_ml_value'].min()))),
             max_value=float(int(math.ceil(df['pred_vs_book_ml_value'].max()))),
             value=(float(int(math.floor(df['pred_vs_book_ml_value'].min()))), float(int(math.ceil(df['pred_vs_book_ml_value'].max())))),
-            step=.05
+            step=.01
         )
 
         # Filter for pred vs book (manual number input with bounds)
         # use int and floor/ceiling so the bounds don't round down and exclude outer bound games
-        ou_value_lower, ou_value_upper = st.slider(
-            "Our o/u compared to sportsbooks",
-            min_value=float(int(math.floor(df['pred_vs_book_tp'].min()))),
-            max_value=float(int(math.ceil(df['pred_vs_book_tp'].max()))),
-            value=(float(int(math.floor(df['pred_vs_book_tp'].min()))), float(int(math.ceil(df['pred_vs_book_tp'].max())))),
-            step = .5
-        )        
+        #ou_value_lower, ou_value_upper = st.slider(
+        #    "Our o/u compared to sportsbooks",
+        #    min_value=float(int(math.floor(df['pred_vs_book_tp'].min()))),
+        #    max_value=float(int(math.ceil(df['pred_vs_book_tp'].max()))),
+        #    value=(float(int(math.floor(df['pred_vs_book_tp'].min()))), float(int(math.ceil(df['pred_vs_book_tp'].max())))),
+        #    step = .5
+        #)        
     
     # column for space
     with col2:
@@ -572,11 +584,17 @@ def historical_results_page():
             filtered_df = filtered_df[filtered_df['t1_conference'].eq(conf_options) | filtered_df['t2_conference'].eq(conf_options)]             
         
         # these ones are gonna include NAs until the checkboxes filter out
+        #filtered_df = filtered_df[
+        #    (filtered_df['book_t1_spread'] >= book_home_spread_lower) & 
+        #    (filtered_df['book_t1_spread'] <= book_home_spread_upper) |
+        #    (filtered_df['book_t1_spread'].isna())
+        #]
+
         filtered_df = filtered_df[
-            (filtered_df['book_t1_spread'] >= book_home_spread_lower) & 
-            (filtered_df['book_t1_spread'] <= book_home_spread_upper) |
-            (filtered_df['book_t1_spread'].isna())
-        ]
+            (filtered_df['cover_prob_from_50'] >= cover_pff_lower) &
+            (filtered_df['cover_prob_from_50'] <= cover_pff_upper)|
+            (filtered_df['cover_prob_from_50'].isna())
+            ]
 
         filtered_df = filtered_df[
             (filtered_df['t1_ml_prob'] >= book_home_ml_prob_lower) & 
@@ -584,17 +602,17 @@ def historical_results_page():
             (filtered_df['t1_ml_prob'].isna())
         ]
 
-        filtered_df = filtered_df[
-            (filtered_df['book_over_under'] >= book_tp_lower) & 
-            (filtered_df['book_over_under'] <= book_tp_upper) |
-            (filtered_df['book_over_under'].isna())
-        ]
+        #filtered_df = filtered_df[
+        #    (filtered_df['book_over_under'] >= book_tp_lower) & 
+        #    (filtered_df['book_over_under'] <= book_tp_upper) |
+        #    (filtered_df['book_over_under'].isna())
+        #]
         
-        filtered_df = filtered_df[
-            (filtered_df['pred_vs_book_point_diff'] >= spread_value_lower) & 
-            (filtered_df['pred_vs_book_point_diff'] <= spread_value_upper) |
-            (filtered_df['pred_vs_book_point_diff'].isna())
-        ]
+        #filtered_df = filtered_df[
+        #    (filtered_df['pred_vs_book_point_diff'] >= spread_value_lower) & 
+        #    (filtered_df['pred_vs_book_point_diff'] <= spread_value_upper) |
+        #    (filtered_df['pred_vs_book_point_diff'].isna())
+        #]
 
         filtered_df = filtered_df[
             (filtered_df['pred_vs_book_ml_value'] >= ml_value_lower) & 
@@ -602,11 +620,11 @@ def historical_results_page():
             (filtered_df['pred_vs_book_ml_value'].isna())
         ]
 
-        filtered_df = filtered_df[
-            (filtered_df['pred_vs_book_tp'] >= ou_value_lower) & 
-            (filtered_df['pred_vs_book_tp'] <= ou_value_upper) |
-            (filtered_df['pred_vs_book_tp'].isna())
-        ]                
+        #filtered_df = filtered_df[
+        #    (filtered_df['pred_vs_book_tp'] >= ou_value_lower) & 
+        #    (filtered_df['pred_vs_book_tp'] <= ou_value_upper) |
+        #    (filtered_df['pred_vs_book_tp'].isna())
+        #]                
         
 
             
