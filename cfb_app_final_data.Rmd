@@ -79,7 +79,9 @@ model_prepped_orig = fbs_only %>%
   mutate(across(starts_with("t2_rol"), ~ ifelse(is.na(.), lag(.), .))) %>% 
   ungroup() %>% 
   select(-c(rol_win_l1, "rol_loss_l1")) %>% 
-  filter(week > 3)
+  filter(week > 3)%>% 
+  mutate(actual_t1_cover = ifelse(t1_book_spread*-1<t1_point_diff, 1, 0),
+         actual_over = ifelse(total_points>book_over_under,1,0))
 
 
 
@@ -103,7 +105,7 @@ model_prepped_dummy = model_prepped_orig %>%
 
 
 # rearrange col order (makes easier when looking at predictions later)
-move_cols = c("pc_no_rain", "pc_light_rain", "pc_moderate_rain", "pc_heavy_rain", "week","t2_home", "conference_game", "season", "t1_point_diff", "t1_win", "total_points", "t1_points", "t2_points", "game_id", "t1_team", "t2_team", "t1_conference", "t2_conference", "completed", "t1_moneyline", "t2_moneyline")
+move_cols = c("pc_no_rain", "pc_light_rain", "pc_moderate_rain", "pc_heavy_rain", "week","t2_home", "conference_game", "season", "t1_point_diff", "t1_win", "total_points", "t1_points", "t2_points", "game_id", "t1_team", "t2_team", "t1_conference", "t2_conference", "completed", "t1_moneyline", "t2_moneyline", "actual_t1_cover", "actual_over")
 
 model_prepped_moved = model_prepped_dummy[, c(setdiff(names(model_prepped_dummy), move_cols), move_cols)]
 
@@ -124,7 +126,7 @@ model_prepped_omit = model_prepped_moved
 
 
 # this week's matchups (save for app)
-model_prepped_this_week = model_prepped_omit %>% filter(season == current_season & week == current_week)
+model_prepped_this_week = model_prepped_omit %>% filter(season == current_season & week == 7)
 #write.csv(model_prepped_this_week, "model_prepped_this_week.csv")
 
 
@@ -437,9 +439,12 @@ write.csv(pred_dat_final_op, "pred_dat_final_op_21to24.csv")
 
 ```{r}
 
-pred_dat_final_cp = read.csv("pred_dat_final_cp_21to24.csv")[,-1]
-pred_dat_final_op = read.csv("pred_dat_final_op_21to24.csv")[,-1]
-pred_dat_final_wp = read.csv("pred_dat_final_wp_21to24.csv")[,-1]
+# pred_dat_final_cp = read.csv("pred_dat_final_cp_21to24.csv")[,-1]
+# pred_dat_final_op = read.csv("pred_dat_final_op_21to24.csv")[,-1]
+# pred_dat_final_wp = read.csv("pred_dat_final_wp_21to24.csv")[,-1]
+pred_dat_final_pd = read.csv("pred_dat_final_t1cover2.csv")[,-1]
+pred_dat_final_tp = read.csv("pred_dat_final_over2.csv")[,-1]
+pred_dat_final_wp = read.csv("pred_dat_final_t1wp2.csv")[,-1]
 
 
 # select cols to add back
@@ -460,6 +465,7 @@ pred_dat_final_pre = pred_dat_final_cp %>%
 pred_dat_final_flip = pred_dat_final_pre %>% 
   mutate(pred_t1_cover = (1-pred_t1_cover),
          actual_t1_cover = (1-actual_t1_cover),
+         pred_t1_cp = 1-pred_t1_cp,
          actual_t1_win = ifelse(actual_t1_win==1,0,1),
          pred_t1_win = ifelse(pred_t1_win==1,0,1),
          pred_t1_wp = 1-pred_t1_wp,
@@ -598,7 +604,7 @@ winnings_calc = pred_dat_final_all  %>%
                             ifelse(-110 > 0, 
                                   (1 + abs(-110)/100)/2, 
                             (1 + 100/abs(-110))/2
-                            )))) #%>%
+                            )))) %>%
   # how much we predicted the book was off
   mutate(ou_confidence = abs(pred_op - .5))
 
@@ -677,7 +683,7 @@ team_info = team_info %>%
 
 # write truncated result out
 #write.csv(team_info, "team_info.csv")
-#team_info = read.csv("team_info.csv")[,-1]
+team_info = read.csv("team_info.csv")[,-1]
 ```
 
 
@@ -691,19 +697,19 @@ team_info = team_info %>%
 
 ```{r}
 
-parameters_book = list(eta = .05,
-              max.depth = 3, # Set max depth
-              min_child_weight = 7, # Set minimum number of samples in node to split
-              gamma = .05, # Set minimum loss reduction for split
+parameters_book = list(eta = .03,
+              max.depth = 4, # Set max depth
+              min_child_weight = 6, # Set minimum number of samples in node to split
+              gamma = .04, # Set minimum loss reduction for split
               subsample = .8, # Set proportion of training data to use in tree
-              colsample_bytree = 1,
+              colsample_bytree = .9,
               
               
-              nrounds = 110 , # Set number of rounds
-              early_stopping_rounds = 30, # Set number of rounds to stop at if there is no improvement)
+              nrounds = 185 , # Set number of rounds
+              early_stopping_rounds = 15, # Set number of rounds to stop at if there is no improvement)
               
               verbose = 0, # 1 - Prints out fit
-              nthread = 1,
+              nthread = 8,
               
               objective = "reg:squarederror",
               eval_metric = "rmse")
@@ -832,8 +838,8 @@ theor_prepped_joined$t1_book_spread = book_spread_model
 ```{r}
 
 # load in most recent pd model info
-theor_model = xgb.load("most_recent_t1_point_diff_model.model")
-theor_vars = read.csv("most_recent_t1_point_diffmodel_var_list.csv")[,2]
+theor_model = xgb.load("most_recent_t1_win_model.model")
+theor_vars = read.csv("most_recent_t1_winmodel_var_list.csv")[,2]
 
 
 # create test matrix for theoretical games
@@ -846,7 +852,8 @@ test_matrix_theor = xgb.DMatrix(data = as.matrix(theor_test[,1:num_predictors_th
 
 # predict
 preds = predict(theor_model, test_matrix_theor)
-pred_dat_final_theor = cbind.data.frame(pred_t1_point_diff = preds, t1_team = theor_test$t1_team, t2_team = theor_test$t2_team, t1_home = theor_test$t1_home, neutral_site = theor_test$neutral_site, t1_conference = theor_test$t1_conference, t2_conference = theor_test$t2_conference)
+pred_dat_final_theor = cbind.data.frame(pred_t1_wp = preds, t1_team = theor_test$t1_team, t2_team = theor_test$t2_team, t1_home = theor_test$t1_home, neutral_site = theor_test$neutral_site, t1_conference = theor_test$t1_conference, t2_conference = theor_test$t2_conference) 
+  
 
 
 
@@ -860,17 +867,17 @@ pred_dat_final_theor$game_id = 1:dim(pred_dat_final_theor)[1]
 
 
 merge_preds_theor = pred_dat_final_theor %>% 
-  mutate(pred_t1_point_diff = ifelse(t1_team == id_max,pred_t1_point_diff, 
-                                     pred_t1_point_diff*-1)) %>% 
+  mutate(pred_t1_wp = ifelse(t1_team == id_max,pred_t1_wp, 
+                                     (1-pred_t1_wp))) %>% 
   group_by(game_id) %>% 
-  summarise(pred_t1_point_diff = mean(pred_t1_point_diff))
+  summarise(pred_t1_wp = mean(pred_t1_wp)) 
 
 
 pred_dat_final_theor = pred_dat_final_theor %>% 
   filter(t1_team == id_max) %>% 
-  select(-c(pred_t1_point_diff)) %>% 
+  select(-c(pred_t1_wp)) %>% 
   left_join(merge_preds_theor, by = c("game_id"))%>% 
-  mutate(pred_t1_point_diff = round(pred_t1_point_diff, 2)) %>% 
+  mutate(pred_t1_wp = round(pred_t1_wp,4)) %>% 
   select(-c(id_min, id_max))
 
 
@@ -879,7 +886,7 @@ pred_dat_final_theor = pred_dat_final_theor %>%
 
 # duplicate rows and flip one for easier aggregation by team
 pred_dat_final_theor2 = pred_dat_final_theor %>% 
-  mutate(pred_t1_point_diff = pred_t1_point_diff*-1) %>% 
+  mutate(pred_t1_wp = (1-pred_t1_wp)) %>% 
   mutate(t1_home = ifelse(neutral_site == 1, 0, ifelse(t1_home == 1, 0, 1))) %>% 
   mutate(
     across(
@@ -897,18 +904,17 @@ pred_dat_final_theor2 = pred_dat_final_theor %>%
 
 
 pred_dat_final_theor = bind_rows(pred_dat_final_theor, pred_dat_final_theor2) %>% 
-  mutate(t1_win = ifelse(pred_t1_point_diff > 0, 1, 0),
+  mutate(t1_win = ifelse(pred_t1_wp > .5, 1, 0),
          conference_game = ifelse(t1_conference == t2_conference, 1, 0),
          week = current_week) %>% 
   left_join(team_info %>% rename(t1_team = school, t1_color = color, t1_logo = logo), by = "t1_team") %>% 
   left_join(team_info %>% rename(t2_team = school, t2_color = color, t2_logo = logo), by = "t2_team") %>%
-  mutate(winning_logo = ifelse(pred_t1_point_diff >0, t1_logo, t2_logo),
-         losing_logo = ifelse(pred_t1_point_diff <=0, t1_logo, t2_logo),
-         winning_color = ifelse(pred_t1_point_diff >0, t1_color, t2_color),
-         losing_logo = ifelse(pred_t1_point_diff <=0, t1_logo, t2_logo),
+  mutate(winning_logo = ifelse(pred_t1_wp >.5, t1_logo, t2_logo),
+         losing_logo = ifelse(pred_t1_wp <=.5, t1_logo, t2_logo),
+         winning_color = ifelse(pred_t1_wp >.5, t1_color, t2_color),
+         losing_logo = ifelse(pred_t1_wp <=.5, t1_logo, t2_logo),
          winning_team = ifelse(t1_win == 1, t1_team, t2_team),
-         losing_team = ifelse(t1_win == 0, t1_team, t2_team),
-         point_margin = abs(pred_t1_point_diff))
+         losing_team = ifelse(t1_win == 0, t1_team, t2_team))
 
 
 
@@ -918,15 +924,15 @@ pred_dat_final_theor = bind_rows(pred_dat_final_theor, pred_dat_final_theor2) %>
 
 # aggregate by team
 
-theor_agg_conf = pred_dat_final_theor %>% filter(conference_game == 1) %>% group_by(t1_team) %>% summarise(win_perc_conf = round(mean(t1_win),2)*100, point_diff_conf = round(mean(pred_t1_point_diff),2)) %>% arrange(desc(win_perc_conf), desc(point_diff_conf)) 
+theor_agg_conf = pred_dat_final_theor %>% filter(conference_game == 1) %>% group_by(t1_team) %>% summarise(win_perc_conf = round(mean(pred_t1_wp)*100,2)) %>% mutate(conf_record = paste0({round(.12*win_perc_conf,0)},"-",{12-round(.12*win_perc_conf,0)})) %>% arrange(desc(win_perc_conf)) 
 
-theor_agg = pred_dat_final_theor %>% group_by(t1_team, t1_conference) %>% summarise(win_perc = round(mean(t1_win),2)*100, point_diff = round(mean(pred_t1_point_diff),2)) %>% arrange(desc(win_perc), desc(point_diff)) %>% left_join(theor_agg_conf, by = "t1_team") %>% ungroup %>%  mutate(Rank = row_number()) %>% group_by(t1_conference) %>% mutate(`Conf Rank` = row_number()) %>% ungroup() %>% 
+theor_agg = pred_dat_final_theor %>% group_by(t1_team, t1_conference) %>% summarise(win_perc = round(mean(pred_t1_wp)*100,2)) %>% mutate(record = paste0({round(.12*win_perc,0)},"-",{12-round(.12*win_perc,0)})) %>%   arrange(desc(win_perc)) %>% left_join(theor_agg_conf, by = "t1_team") %>% ungroup %>%  mutate(Rank = row_number()) %>% group_by(t1_conference) %>% mutate(`Conf Rank` = row_number()) %>% ungroup() %>% 
   rename(Team = t1_team,
          Conf = t1_conference,
          `Pred Win%` = win_perc,
-         `Pred PD/g` = point_diff,
+         `Pred Record` = record,
          `Pred Conf Win%` = win_perc_conf,
-         `Pred Conf PD` = point_diff_conf)
+         `Pred Conf Record` = conf_record)
 
 
 

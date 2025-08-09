@@ -13,7 +13,7 @@ import xgboost as xgb
 ## GONNA HAVE TO CHANGE A LOT OF THESE ONCE AUTOMATED
 
 # Read in historical betting data
-historical_data = pd.read_csv("final_prediction_df803.csv", encoding="utf-8", sep=",", header=0)
+historical_data = pd.read_csv("final_prediction_df_21to24.csv", encoding="utf-8", sep=",", header=0)
 
 
 # load theoretical data
@@ -22,12 +22,12 @@ theor_prepped = theor_prepped.drop(theor_prepped.columns[0], axis=1)
 theor_agg = pd.read_csv("theoretical_agg_test.csv", encoding="utf-8", sep=",", header=0)
 theor_agg = theor_agg.drop(theor_agg.columns[0], axis=1)
 
-# load point diff model
-pdiff_model = xgb.Booster()
-pdiff_model.load_model("saved_models/20247_t1_point_diff_model.model")
+# load  model
+cover_model = xgb.Booster()
+cover_model.load_model("saved_models/20247_actual_t1_cover_model.model")
 # load point diff vars
-pdiff_vars = pd.read_csv("saved_models/20247_t1_point_diffmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
-pdiff_vars = pdiff_vars.astype(str).str.strip().tolist()
+cover_vars = pd.read_csv("saved_models/20247_actual_t1_covermodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
+cover_vars = cover_vars.astype(str).str.strip().tolist()
 
 
 # load win prob model
@@ -38,11 +38,11 @@ wp_vars = pd.read_csv("saved_models/20247_t1_winmodel_var_list.csv", encoding="u
 wp_vars = wp_vars.astype(str).str.strip().tolist()
 
 # load over/under model
-tp_model = xgb.Booster()
-tp_model.load_model("saved_models/20247_total_points_model.model")
+over_model = xgb.Booster()
+over_model.load_model("saved_models/20247_actual_over_model.model")
 # load point diff vars
-tp_vars = pd.read_csv("saved_models/20247_total_pointsmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
-tp_vars = tp_vars.astype(str).str.strip().tolist()
+over_vars = pd.read_csv("saved_models/20247_actual_overmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
+over_vars = over_vars.astype(str).str.strip().tolist()
 
 # load this week's data for XGB
 sample_data = pd.read_csv("model_prepped_this_week_test.csv", encoding="utf-8", sep=",", header=0)
@@ -60,158 +60,175 @@ this_week = theor_prepped['week'].max()
 
 # predict function
 def predict_with_model(model, var_list, data):
+    best_ntree = int(model.attr("best_ntreelimit"))
     dmatrix = xgb.DMatrix(data[var_list])
-    return model.predict(dmatrix)
+    return model.predict(dmatrix,iteration_range=(0, best_ntree))
 
-# predict the 3 outcomes for this week
-pdiff_preds = predict_with_model(pdiff_model, pdiff_vars, sample_data)
-wp_preds = predict_with_model(wp_model, wp_vars, sample_data)
-tp_preds = predict_with_model(tp_model, tp_vars, sample_data)
+def make_merged_predictions(data):
 
-# results dfs
-results_df = sample_data[["t1_team", "t2_team", "t1_home", "neutral_site", "game_id"]].copy()
-results_df["pdiff_pred"] = pdiff_preds
-results_df["win_prob_pred"] = wp_preds
-results_df["total_pts_pred"] = tp_preds
+        # predict the 3 outcomes for this week
+        cp_preds = predict_with_model(cover_model, cover_vars, data)
+        wp_preds = predict_with_model(wp_model, wp_vars, data)
+        op_preds = predict_with_model(over_model, over_vars, data)
 
-# function to make sure games are on same side
-def normalize_row(row):
-    keep_original = ((row["t1_home"] == 1) or ((row["neutral_site"] == 1) and (row["t1_team"] > row["t2_team"])))
-    if keep_original:
-        return row
-    else:
-        row["t1_team"], row["t2_team"] = row["t2_team"], row["t1_team"]
-        row["pdiff_pred"] = -row["pdiff_pred"]
-        row["win_prob_pred"] = 1 - row["win_prob_pred"]
-        return row
-normalized_df = results_df.apply(normalize_row, axis=1)
+        # results dfs
+        results_df = sample_data[["t1_team", "t2_team", "t1_home", "neutral_site", "game_id"]].copy()
+        results_df["cover_prob_pred"] = cp_preds
+        results_df["win_prob_pred"] = wp_preds
+        results_df["over_prob_pred"] = op_preds
 
-# aggregate the two predictions of each game
-aggregated_df = normalized_df.groupby(
-    ["game_id", "t1_team", "t2_team", "neutral_site"], as_index=False
-).agg({
-    "pdiff_pred": "mean",
-    "win_prob_pred": "mean",
-    "total_pts_pred": "mean"
-})
+        # function to make sure games are on same side
+        def normalize_row(row):
+            keep_original = ((row["t1_home"] == 1) or ((row["neutral_site"] == 1) and (row["t1_team"] > row["t2_team"])))
+            if keep_original:
+                return row
+            else:
+                row["t1_team"], row["t2_team"] = row["t2_team"], row["t1_team"]
+                row["cover_prob_pred"] = 1-row["cover_prob_pred"]
+                row["win_prob_pred"] = 1 - row["win_prob_pred"]
+                return row
+        normalized_df = results_df.apply(normalize_row, axis=1)
 
-
-# modify and create some cols, inclusing predicted moneylines
-aggregated_df["total_pts_pred"] = round(aggregated_df["total_pts_pred"],2)
-aggregated_df["spread_pred"] = round(-aggregated_df["pdiff_pred"],2)  
-aggregated_df["t2_win_prob_pred"] = (1- aggregated_df["win_prob_pred"])
-def winprob_to_moneyline(prob):
-    if prob >= 0.5:
-        return round(-100 * prob / (1 - prob), 0)
-    else:
-        return round(100 * (1 - prob) / prob, 0)
-aggregated_df["t1_pred_moneyline"] = aggregated_df["win_prob_pred"].apply(winprob_to_moneyline)
-aggregated_df["t2_pred_moneyline"] = aggregated_df["t2_win_prob_pred"].apply(winprob_to_moneyline)
-
-# change col names to be better for UI, select needed cols
-final_predictions_df = aggregated_df.rename(columns={
-    "t1_team": "Home",
-    "t2_team": "Away",
-    "neutral_site": "Neutral?",
-    "spread_pred": "Pred Home Spread",
-    "t1_pred_moneyline": "Pred Home Moneyline",
-    "t2_pred_moneyline": "Pred Away Moneyline",
-    "total_pts_pred": "Pred Total Points",
-    "win_prob_pred": "Pred Home Win Prob",
-    "t2_win_prob_pred": "Pred Away Win Prob"
-})[["Home", "Away", "Neutral?", "Pred Home Spread", "Pred Home Moneyline", "Pred Away Moneyline", "Pred Total Points", "Pred Home Win Prob",
-    "Pred Away Win Prob", "game_id"]]
+        # aggregate the two predictions of each game
+        aggregated_df = normalized_df.groupby(
+            ["game_id", "t1_team", "t2_team", "neutral_site"], as_index=False
+        ).agg({
+            "cover_prob_pred": "mean",
+            "win_prob_pred": "mean",
+            "over_prob_pred": "mean"
+        })
 
 
-# join in more info we need for betting comparisons
-betting_join = sample_data[["t1_book_spread", "t1_ml_odds", "t2_ml_odds", "over_val", "t1_conference", "t2_conference", "game_id", "t1_team"]]
-merged_predictions = final_predictions_df.merge(betting_join, left_on=["game_id","Home"], right_on=["game_id", "t1_team"], how="left")
+        # modify and create some cols, including predicted moneylines 
+        aggregated_df["t2_win_prob_pred"] = (1- aggregated_df["win_prob_pred"])
+
+        def winprob_to_moneyline(prob):
+            if prob >= 0.5:
+                return round(-100 * prob / (1 - prob), 0)
+            else:
+                return round(100 * (1 - prob) / prob, 0)
+        aggregated_df["t1_pred_moneyline"] = aggregated_df["win_prob_pred"].apply(winprob_to_moneyline)
+        aggregated_df["t2_pred_moneyline"] = aggregated_df["t2_win_prob_pred"].apply(winprob_to_moneyline)
+
+        # change col names to be better for UI, select needed cols
+        final_predictions_df = aggregated_df.rename(columns={
+            "t1_team": "Home",
+            "t2_team": "Away",
+            "neutral_site": "Neutral?",
+            "cover_prob_pred": "Pred Home Cover Prob",
+            "t1_pred_moneyline": "Pred Home Moneyline",
+            "t2_pred_moneyline": "Pred Away Moneyline",
+            "over_prob_pred": "Pred Over Prob",
+            "win_prob_pred": "Pred Home Win Prob",
+            "t2_win_prob_pred": "Pred Away Win Prob"
+        })[["Home", "Away", "Neutral?", "Pred Home Cover Prob", "Pred Home Moneyline", "Pred Away Moneyline", "Pred Over Prob", "Pred Home Win Prob",
+            "Pred Away Win Prob", "game_id"]]
 
 
-## Spread
-
-# create spread value and bet on columns
-spread_conditions = [merged_predictions["Pred Home Spread"] < merged_predictions["t1_book_spread"]]
-spread_choices = [merged_predictions["Home"]]
-merged_predictions["Spread Bet on:"] =  np.select(spread_conditions,spread_choices, default=merged_predictions["Away"])
-merged_predictions["Spread Value"] = round(abs(merged_predictions["Pred Home Spread"] - merged_predictions["t1_book_spread"]),2)
+        # join in more info we need for betting comparisons
+        betting_join = sample_data[["t1_book_spread", "book_over_under", "t1_moneyline", "t2_moneyline", "t1_conference", "t2_conference", "game_id", "t1_team"]]
+        merged_predictions = final_predictions_df.merge(betting_join, left_on=["game_id","Home"], right_on=["game_id", "t1_team"], how="left")
 
 
+        ## Spread
 
 
-
-## Moneyline
-
-# convert book ml to win prob, create some related cols
-def moneyline_to_winprob(ml):
-    if ml < 0:
-        # Negative moneyline (favorite)
-        return round(-ml / (-ml + 100), 4)
-    else:
-        # Positive moneyline (underdog)
-        return round(100 / (ml + 100), 4)
-    
-merged_predictions["t1_ml_prob"] = merged_predictions["t1_ml_odds"].apply(moneyline_to_winprob)
-merged_predictions["t2_ml_prob"] = merged_predictions["t2_ml_odds"].apply(moneyline_to_winprob)
-
-conditions_ml = [
-    merged_predictions["t1_ml_prob"] < merged_predictions["Pred Home Win Prob"],
-    merged_predictions["t2_ml_prob"] < merged_predictions["Pred Away Win Prob"]
-]
-choices_ml_bet = [
-    merged_predictions["Home"],
-    merged_predictions["Away"]
-]
-choices_ml_val = [
-    merged_predictions["Pred Home Win Prob"] - merged_predictions["t1_ml_prob"],
-    merged_predictions["Pred Away Win Prob"] - merged_predictions["t2_ml_prob"]
-]
-
-# create ml value and bet on cols
-merged_predictions["ML Bet on:"] = np.select(conditions_ml, choices_ml_bet, default="Neither")
-merged_predictions["ML Value"] = np.select(conditions_ml, choices_ml_val, default=0)
-merged_predictions["ML Value"] = round(merged_predictions["ML Value"]*100,2)
-
-
-
-## Over/Under
-
-# create o/u value and bet on cols
-merged_predictions["O/U Bet on:"] = merged_predictions.apply(
-    lambda row: "Over" if row["Pred Total Points"] > row["over_val"] else "Under", axis=1
-)
-merged_predictions["O/U Value"] = round(abs(merged_predictions["Pred Total Points"] - merged_predictions["over_val"]),2)
-    
-
-
-# make cols cleaner
-merged_predictions["Pred Home Win Prob"] = round(merged_predictions["Pred Home Win Prob"],4)
-merged_predictions["Pred Away Win Prob"] = round(merged_predictions["Pred Away Win Prob"],4)
-# matchup col
-merged_predictions["matchup"] = merged_predictions["Away"] + " vs " + merged_predictions["Home"]
-# add logos and colors
-merged_predictions = merged_predictions.merge(team_info, left_on = ["Home"], right_on = ["school"], how = "left")
-merged_predictions = merged_predictions.rename(columns = {"color":"home_color", "logo": "home_logo"})
-merged_predictions = merged_predictions.drop(["school"], axis = 1)
-merged_predictions = merged_predictions.merge(team_info, left_on = ["Away"], right_on = ["school"], how = "left")
-merged_predictions = merged_predictions.rename(columns = {"color":"away_color", "logo": "away_logo"})
-merged_predictions = merged_predictions.drop(["school"], axis = 1)
-
-# final df with cleaner names
-merged_predictions = merged_predictions.rename(columns={
-    "t1_book_spread": "Book Home Spread",
-    "t1_ml_odds": "Book Home Moneyline",
-    "t2_ml_odds": "Book Away Moneyline",
-    "t1_ml_prob": "Book Home Win Prob",
-    "t2_ml_prob": "Book Away Win Prob",
-    "over_val": "Book O/U",
-    "t1_conference": "Home Conf",
-    "t2_conference": "Away Conf"
-})
+        merged_predictions.loc[merged_predictions['Pred Home Cover Prob']>.5,"Spread Bet on:"] = merged_predictions['Home']
+        merged_predictions.loc[merged_predictions['Pred Home Cover Prob']<=.5,"Spread Bet on:"] = merged_predictions['Away']
+        merged_predictions["Spread Value"] = round(abs(merged_predictions['Pred Home Cover Prob'] - .5)*100,2)
 
 
 
 
+        ## Moneyline
+
+        # convert book ml to win prob, create some related cols
+        def moneyline_to_winprob(ml):
+            if ml < 0:
+                # Negative moneyline (favorite)
+                return round(-ml / (-ml + 100), 4)
+            else:
+                # Positive moneyline (underdog)
+                return round(100 / (ml + 100), 4)
+            
+        merged_predictions["t1_ml_prob"] = merged_predictions["t1_moneyline"].apply(moneyline_to_winprob)
+        merged_predictions["t2_ml_prob"] = merged_predictions["t2_moneyline"].apply(moneyline_to_winprob)
+
+
+        conditions_ml = [
+            merged_predictions["t1_ml_prob"]  < merged_predictions["Pred Home Win Prob"],
+            merged_predictions["t2_ml_prob"]  < merged_predictions["Pred Away Win Prob"]
+        ]
+        conditions_ml_val = [
+            merged_predictions["Pred Away Win Prob"] - merged_predictions["t2_ml_prob"] < merged_predictions["Pred Home Win Prob"] - merged_predictions["t1_ml_prob"],
+            merged_predictions["Pred Home Win Prob"] - merged_predictions["t1_ml_prob"] < merged_predictions["Pred Away Win Prob"] - merged_predictions["t2_ml_prob"]
+        ]
+        choices_ml_bet = [
+            merged_predictions["Home"],
+            merged_predictions["Away"]
+        ]
+        choices_ml_val = [
+            merged_predictions["Pred Home Win Prob"] - merged_predictions["t1_ml_prob"],
+            merged_predictions["Pred Away Win Prob"] - merged_predictions["t2_ml_prob"]
+        ]
+        choices_ml_losing_val = [
+            merged_predictions["Pred Away Win Prob"] - merged_predictions["t2_ml_prob"],
+            merged_predictions["Pred Home Win Prob"] - merged_predictions["t1_ml_prob"]
+        ]
+
+
+        # create ml value and bet on cols
+        merged_predictions["ML Bet on:"] = np.select(conditions_ml, choices_ml_bet, default="Neither")
+        merged_predictions["ML Value"] = np.select(conditions_ml_val, choices_ml_val, default=0)
+        merged_predictions["ML Losing Value"] = np.select(conditions_ml_val, choices_ml_losing_val, default=0)
+        merged_predictions["ML Value"] = round(merged_predictions["ML Value"]*100,2)
+        merged_predictions["ML Losing Value"] = round(merged_predictions["ML Losing Value"]*100,2)
+
+
+
+        ## Over/Under
+
+        # create o/u value and bet on cols
+        merged_predictions.loc[merged_predictions["Pred Over Prob"]>.5,"O/U Bet on:"] = "Over"
+        merged_predictions.loc[merged_predictions["Pred Over Prob"]<.5,"O/U Bet on:"] = "Under"
+        merged_predictions["O/U Value"] = round(abs(merged_predictions["Pred Over Prob"] - .5)*100,2)
+            
+
+
+        # make cols cleaner
+        merged_predictions["Pred Home Win Prob"] = round(merged_predictions["Pred Home Win Prob"]*100,2)
+        merged_predictions["Pred Away Win Prob"] = round(merged_predictions["Pred Away Win Prob"]*100,2)
+        merged_predictions["t1_ml_prob"] = round(merged_predictions["t1_ml_prob"]*100,2)
+        merged_predictions["t2_ml_prob"] = round(merged_predictions["t2_ml_prob"]*100,2)
+        merged_predictions["Pred Over Prob"] = round(merged_predictions["Pred Over Prob"]*100,2)
+        merged_predictions["Pred Home Cover Prob"] = round(merged_predictions["Pred Home Cover Prob"]*100,2)
+        # matchup col
+        merged_predictions["matchup"] = merged_predictions["Away"] + " vs " + merged_predictions["Home"]
+        # add logos and colors
+        merged_predictions = merged_predictions.merge(team_info, left_on = ["Home"], right_on = ["school"], how = "left")
+        merged_predictions = merged_predictions.rename(columns = {"color":"home_color", "logo": "home_logo"})
+        merged_predictions = merged_predictions.drop(["school"], axis = 1)
+        merged_predictions = merged_predictions.merge(team_info, left_on = ["Away"], right_on = ["school"], how = "left")
+        merged_predictions = merged_predictions.rename(columns = {"color":"away_color", "logo": "away_logo"})
+        merged_predictions = merged_predictions.drop(["school"], axis = 1)
+
+        # final df with cleaner names
+        merged_predictions = merged_predictions.rename(columns={
+            "t1_book_spread": "Book Home Spread",
+            "t1_moneyline": "Book Home Moneyline",
+            "t2_moneyline": "Book Away Moneyline",
+            "t1_ml_prob": "Book Home Win Prob",
+            "t2_ml_prob": "Book Away Win Prob",
+            "book_over_under": "Book O/U",
+            "t1_conference": "Home Conf",
+            "t2_conference": "Away Conf"
+        })
+
+        return merged_predictions        
+
+
+
+merged_predictions = make_merged_predictions(sample_data)
 
 
 
@@ -258,20 +275,20 @@ t1_neutral_only.loc[t1_neutral_only["og_han"]==3, "real_game"] = 1
 t1_neutral_only.drop(["og_han"],axis=1)
 
 # predict the three dfs
-pdiff_preds_ho = predict_with_model(pdiff_model, pdiff_vars, t1_home_only)
-pdiff_preds_ao = predict_with_model(pdiff_model, pdiff_vars, t1_away_only)
-pdiff_preds_no = predict_with_model(pdiff_model, pdiff_vars, t1_neutral_only)
+wp_preds_ho = predict_with_model(wp_model, wp_vars, t1_home_only)
+wp_preds_ao = predict_with_model(wp_model, wp_vars, t1_away_only)
+wp_preds_no = predict_with_model(wp_model, wp_vars, t1_neutral_only)
 
 # create results dfs
 t1_home_only_short = t1_home_only[["t1_team", "t2_team", "t1_home", "neutral_site", "game_id", "real_game"]]
 results_df_ho = t1_home_only_short.copy()
-results_df_ho["pdiff_pred"] = pdiff_preds_ho
+results_df_ho["wp_pred"] = wp_preds_ho
 t1_away_only_short = t1_away_only[["t1_team", "t2_team", "t1_home", "neutral_site", "game_id", "real_game"]]
 results_df_ao = t1_away_only_short.copy()
-results_df_ao["pdiff_pred"] = pdiff_preds_ao
+results_df_ao["wp_pred"] = wp_preds_ao
 t1_neutral_only_short = t1_neutral_only[["t1_team", "t2_team", "t1_home", "neutral_site", "game_id", "real_game"]]
 results_df_no = t1_neutral_only_short.copy()
-results_df_no["pdiff_pred"] = pdiff_preds_no
+results_df_no["wp_pred"] = wp_preds_no
 # concatenate dfs together
 results_tw_theor = pd.concat([results_df_ho, results_df_ao, results_df_no], axis=0, ignore_index=True)
 
@@ -283,7 +300,7 @@ def normalize_row(row):
         return row
     else:
         row["t1_team"], row["t2_team"] = row["t2_team"], row["t1_team"]
-        row["pdiff_pred"] = -row["pdiff_pred"]
+        row["wp_pred"] = 1-row["wp_pred"]
         if row["neutral_site"]==1:
             row["t1_home"] = 0
         else:
@@ -295,11 +312,11 @@ normalized_df_tw_theor = results_tw_theor.apply(normalize_row, axis=1)
 aggregated_df_tw_theor = normalized_df_tw_theor.groupby(
     ["game_id", "t1_team", "t2_team", "t1_home", "neutral_site", "real_game"], as_index=False
 ).agg({
-    "pdiff_pred": "mean"
+    "wp_pred": "mean"
 })
 # make cols cleaner
-aggregated_df_tw_theor["pdiff_pred"] = round(aggregated_df_tw_theor["pdiff_pred"],2)
-aggregated_df_tw_theor["new_win"] = (aggregated_df_tw_theor["pdiff_pred"] > 0).astype(int)
+aggregated_df_tw_theor["wp_pred"] = round(aggregated_df_tw_theor["wp_pred"],4)
+aggregated_df_tw_theor["new_win"] = (aggregated_df_tw_theor["wp_pred"] > .5).astype(int)
 
 
 # merge to theoretical data, if in dataset
@@ -308,26 +325,27 @@ theor_prepped = theor_prepped.merge(aggregated_df_tw_theor, on=["t1_team", "t2_t
 
 
 # change cols in theoretical data for pdiff and win to that of new predictions for those rows
-theor_prepped.loc[theor_prepped["pdiff_pred"].notna(), "pred_t1_point_diff"] = theor_prepped["pdiff_pred"]
-theor_prepped["point_margin"] = abs(theor_prepped["pred_t1_point_diff"])
+theor_prepped.loc[theor_prepped["wp_pred"].notna(), "pred_t1_wp"] = theor_prepped["wp_pred"]
 theor_prepped.loc[theor_prepped["new_win"].notna(), "t1_win"] = theor_prepped["new_win"]
-theor_prepped = theor_prepped.drop(["pdiff_pred", "new_win"], axis =1)
+theor_prepped = theor_prepped.drop(["wp_pred", "new_win"], axis =1)
 
 # change who the winning and losing team cols are in case that changed
-theor_prepped.loc[theor_prepped["pred_t1_point_diff"]>0, "winning_team"] = theor_prepped["t1_team"]
-theor_prepped.loc[theor_prepped["pred_t1_point_diff"]<=0, "winning_team"] = theor_prepped["t2_team"]
-theor_prepped.loc[theor_prepped["pred_t1_point_diff"]<=0, "losing_team"] = theor_prepped["t1_team"]
-theor_prepped.loc[theor_prepped["pred_t1_point_diff"]>0, "losing_team"] = theor_prepped["t2_team"]
-theor_prepped.loc[theor_prepped["pred_t1_point_diff"]>0, "winning_logo"] = theor_prepped["t1_logo"]
-theor_prepped.loc[theor_prepped["pred_t1_point_diff"]<=0, "winning_logo"] = theor_prepped["t2_logo"]
-theor_prepped.loc[theor_prepped["pred_t1_point_diff"]<=0, "losing_logo"] = theor_prepped["t1_logo"]
-theor_prepped.loc[theor_prepped["pred_t1_point_diff"]>0, "losing_logo"] = theor_prepped["t2_logo"]
-theor_prepped.loc[theor_prepped["pred_t1_point_diff"]>0, "winning_color"] = theor_prepped["t1_color"]
-theor_prepped.loc[theor_prepped["pred_t1_point_diff"]<=0, "winning_color"] = theor_prepped["t2_color"]
-theor_prepped.loc[theor_prepped["pred_t1_point_diff"]<=0, "losing_color"] = theor_prepped["t1_color"]
-theor_prepped.loc[theor_prepped["pred_t1_point_diff"]>0, "losing_color"] = theor_prepped["t2_color"]
+theor_prepped.loc[theor_prepped["pred_t1_wp"]>.5, "winning_team"] = theor_prepped["t1_team"]
+theor_prepped.loc[theor_prepped["pred_t1_wp"]<=.5, "winning_team"] = theor_prepped["t2_team"]
+theor_prepped.loc[theor_prepped["pred_t1_wp"]<=.5, "losing_team"] = theor_prepped["t1_team"]
+theor_prepped.loc[theor_prepped["pred_t1_wp"]>.5, "losing_team"] = theor_prepped["t2_team"]
+theor_prepped.loc[theor_prepped["pred_t1_wp"]>.5, "winning_logo"] = theor_prepped["t1_logo"]
+theor_prepped.loc[theor_prepped["pred_t1_wp"]<=.5, "winning_logo"] = theor_prepped["t2_logo"]
+theor_prepped.loc[theor_prepped["pred_t1_wp"]<=.5, "losing_logo"] = theor_prepped["t1_logo"]
+theor_prepped.loc[theor_prepped["pred_t1_wp"]>.5, "losing_logo"] = theor_prepped["t2_logo"]
+theor_prepped.loc[theor_prepped["pred_t1_wp"]>.5, "winning_color"] = theor_prepped["t1_color"]
+theor_prepped.loc[theor_prepped["pred_t1_wp"]<=.5, "winning_color"] = theor_prepped["t2_color"]
+theor_prepped.loc[theor_prepped["pred_t1_wp"]<=.5, "losing_color"] = theor_prepped["t1_color"]
+theor_prepped.loc[theor_prepped["pred_t1_wp"]>.5, "losing_color"] = theor_prepped["t2_color"]
 
-
+theor_prepped["pred_t1_wp"] = round(theor_prepped["pred_t1_wp"]*100,2)
+theor_prepped.loc[theor_prepped["pred_t1_wp"]>50, "pred_winner_wp"] = theor_prepped["pred_t1_wp"]
+theor_prepped.loc[theor_prepped["pred_t1_wp"]<=50, "pred_winner_wp"] = 100-theor_prepped["pred_t1_wp"]
 
 
 # set page width set
@@ -348,7 +366,7 @@ def welcome_page():
           }
           </style>
           <div class="custom-font">Welcome! This site is built around the use of an XGBoost model to predict
-          point differential, win probability, and total points for FBS College Football games. 
+          cover probability, win probability, and over probability for FBS College Football games. 
           The goal is to predict future outcomes for fun and try to beat the accuracy of sportsbook models.</div>
           """,
           unsafe_allow_html=True
@@ -417,8 +435,8 @@ def historical_results_page():
     st.title('Model Performance on Historical Test Data')
 
     st.write("This is how well our model would perform on previous games over the last few years versus how well a random 50/50 guesser would perform. Only test data (games not included in model training) are included here.")
-    st.write("As an important note, the betting data is taken from a second data source, which is somewhat incomplete, especially in older years. For certain games, spread and ml winnings cannot be calculated and are skipped over, leading to a missing value for winnings. However, those missing values appear to be random and shouldn't affect overall return calculations, especially in recent years.")
     st.write("Last thing: these returns are assuming you bet the same units for hundreds of games. If you use the model on one game, the return is either gonna be 0 or ~95%. If you bet on 100, it will look more like this projected reutrn. It's a sample size game: it won't get every game right but will hopefully be profitable over time.")
+    st.write("More notes/considerations are at the bottom of this page")
 
     df = historical_data
 
@@ -482,38 +500,56 @@ def historical_results_page():
         
 
 
-        # Filter for book_t1_spread (manual number input with bounds)
-        # use int and floor/ceiling so the bounds don't round down and exclude outer bound games
-        #book_home_spread_lower, book_home_spread_upper = st.slider(
-        #    "Book Home Spread",
-        #    min_value=int(math.floor(df['book_t1_spread'].min())),
-        #    max_value=int(math.ceil(df['book_t1_spread'].max())),
-        #    value=(int(math.floor(df['book_t1_spread'].min())), int(math.ceil(df['book_t1_spread'].max())))
-        #)
+
 
         # Filter for book_t1_spread (manual number input with bounds)
         # use int and floor/ceiling so the bounds don't round down and exclude outer bound games
-        cover_pff_lower, cover_pff_upper = st.slider(
-            "Cover PFF",
-            min_value=float(int(math.floor(df['cover_prob_from_50'].min()))),
-            max_value=float(int(math.ceil(df['cover_prob_from_50'].max()))),
-            value=(float((int(math.floor(df['cover_prob_from_50'].min())))), float(int(math.ceil(df['cover_prob_from_50'].max())))),
+        cover_conf_lower, cover_conf_upper = st.slider(
+            "Cover Confidence",
+            min_value=float(int(math.floor(df['cover_confidence'].min()))),
+            max_value=float(round(df['cover_confidence'].max(),2))+.01,
+            value=(float((int(math.floor(df['cover_confidence'].min())))), float(round(df['cover_confidence'].max(),2))+.01),
             step = .01
         )
 
-        # Filter to ask user whether they want to exclude NAs
-        exclude_na_spread = st.checkbox("Exclude NAs in the spread columns?", value=False)
+        # Filter for pred vs book (manual number input with bounds)
+        # use int and floor/ceiling so the bounds don't round down and exclude outer bound games
+        ml_value_lower, ml_value_upper = st.slider(
+            "Our win prob compared to sportsbooks'",
+            min_value=float(round(df['ml_value'].min(),2))-.01,
+            max_value=float(round(df['ml_value'].max(),2))+.01,
+            value=(float(round(df['ml_value'].min(),2))-.01 , float(round(df['ml_value'].max(),2))+.01),
+            step=.01
+        )
 
+        ou_conf_lower, ou_conf_upper = st.slider(
+            "O/U Confidence",
+            min_value=float(int(math.floor(df['ou_confidence'].min()))),
+            max_value=float(round(df['ou_confidence'].max(),2))+.01,
+            value=(float((int(math.floor(df['ou_confidence'].min())))), float(round(df['ou_confidence'].max(),2))+.01),
+            step = .01
+        )        
+
+
+        # Filter for book_over_under (manual number input with bounds)
+        book_sp_lower, book_sp_upper = st.slider(
+            "Home Book Spread",
+            min_value=int(math.floor(df['t1_book_spread'].min())),
+            max_value=int(math.ceil(df['t1_book_spread'].max())),
+            value=(int(math.floor(df['t1_book_spread'].min())), int(math.ceil(df['t1_book_spread'].max())))
+        ) 
 
         # Filter for book_home_ml_odds (manual number input with bounds)
         book_home_ml_prob_lower, book_home_ml_prob_upper = st.slider(
-            "Book Home ML Odds",
-            min_value=int(math.floor(df['t1_ml_prob'].min())),
-            max_value=int(math.ceil(df['t1_ml_prob'].max())),
-            value=(int(math.floor(df['t1_ml_prob'].min())), int(math.ceil(df['t1_ml_prob'].max())))
+            "Book Home ML Prob",
+            min_value=float(int(math.floor(df['t1_ml_prob'].min()))),
+            max_value=float(int(math.ceil(df['t1_ml_prob'].max()))),
+            value=(float(int(math.floor(df['t1_ml_prob'].min()))), float(int(math.ceil(df['t1_ml_prob'].max())))),
+            step = .01
         )
+  
 
-        # Filter for book_home_ml_odds (manual number input with bounds)
+        # Filter for book_over_under (manual number input with bounds)
         book_tp_lower, book_tp_upper = st.slider(
             "Book Over/Under",
             min_value=int(math.floor(df['book_over_under'].min())),
@@ -528,35 +564,7 @@ def historical_results_page():
         
         
         
-        # Filter for pred vs book (manual number input with bounds)
-        # use int and floor/ceiling so the bounds don't round down and exclude outer bound games
-        #spread_value_lower, spread_value_upper = st.slider(
-        #    "Our spread compared to sportsbooks'",
-        #    min_value=float(int(math.floor(df['pred_vs_book_point_diff'].min()))),
-        #    max_value=float(int(math.ceil(df['pred_vs_book_point_diff'].max()))),
-        #    value=(float(int(math.floor(df['pred_vs_book_point_diff'].min()))), float(int(math.ceil(df['pred_vs_book_point_diff'].max())))),
-        #    step=.5
-        #)
-
-        # Filter for pred vs book (manual number input with bounds)
-        # use int and floor/ceiling so the bounds don't round down and exclude outer bound games
-        ml_value_lower, ml_value_upper = st.slider(
-            "Our win prob compared to sportsbooks'",
-            min_value=float(int(math.floor(df['pred_vs_book_ml_value'].min()))),
-            max_value=float(int(math.ceil(df['pred_vs_book_ml_value'].max()))),
-            value=(float(int(math.floor(df['pred_vs_book_ml_value'].min()))), float(int(math.ceil(df['pred_vs_book_ml_value'].max())))),
-            step=.01
-        )
-
-        # Filter for pred vs book (manual number input with bounds)
-        # use int and floor/ceiling so the bounds don't round down and exclude outer bound games
-        #ou_value_lower, ou_value_upper = st.slider(
-        #    "Our o/u compared to sportsbooks",
-        #    min_value=float(int(math.floor(df['pred_vs_book_tp'].min()))),
-        #    max_value=float(int(math.ceil(df['pred_vs_book_tp'].max()))),
-        #    value=(float(int(math.floor(df['pred_vs_book_tp'].min()))), float(int(math.ceil(df['pred_vs_book_tp'].max())))),
-        #    step = .5
-        #)        
+     
     
     # column for space
     with col2:
@@ -569,7 +577,7 @@ def historical_results_page():
         filtered_df = df
 
         if team_options != "All":
-            filtered_df = filtered_df[filtered_df['home_team'].eq(team_options) | filtered_df['away_team'].eq(team_options)]
+            filtered_df = filtered_df[filtered_df['t1_team'].eq(team_options) | filtered_df['t2_team'].eq(team_options)]
         else:
             filtered_df = df
 
@@ -583,58 +591,56 @@ def historical_results_page():
         if conf_options != "All":
             filtered_df = filtered_df[filtered_df['t1_conference'].eq(conf_options) | filtered_df['t2_conference'].eq(conf_options)]             
         
-        # these ones are gonna include NAs until the checkboxes filter out
-        #filtered_df = filtered_df[
-        #    (filtered_df['book_t1_spread'] >= book_home_spread_lower) & 
-        #    (filtered_df['book_t1_spread'] <= book_home_spread_upper) |
-        #    (filtered_df['book_t1_spread'].isna())
-        #]
+
 
         filtered_df = filtered_df[
-            (filtered_df['cover_prob_from_50'] >= cover_pff_lower) &
-            (filtered_df['cover_prob_from_50'] <= cover_pff_upper)|
-            (filtered_df['cover_prob_from_50'].isna())
+            (filtered_df['cover_confidence'] >= cover_conf_lower) &
+            (filtered_df['cover_confidence'] <= cover_conf_upper)|
+            (filtered_df['cover_confidence'].isna())
             ]
+        
+        filtered_df = filtered_df[
+            (filtered_df['ml_value'] >= ml_value_lower) & 
+            (filtered_df['ml_value'] <= ml_value_upper) |
+            (filtered_df['ml_value'].isna())
+        ]        
+        
+        filtered_df = filtered_df[
+            (filtered_df['ou_confidence'] >= ou_conf_lower) &
+            (filtered_df['ou_confidence'] <= ou_conf_upper)|
+            (filtered_df['ou_confidence'].isna())
+            ]        
+
+
+
+        
+
+
+        filtered_df = filtered_df[
+            (filtered_df['t1_book_spread'] >= book_sp_lower) & 
+            (filtered_df['t1_book_spread'] <= book_sp_upper) |
+            (filtered_df['t1_book_spread'].isna())
+        ]
 
         filtered_df = filtered_df[
             (filtered_df['t1_ml_prob'] >= book_home_ml_prob_lower) & 
             (filtered_df['t1_ml_prob'] <= book_home_ml_prob_upper) |
             (filtered_df['t1_ml_prob'].isna())
-        ]
+        ]        
 
-        #filtered_df = filtered_df[
-        #    (filtered_df['book_over_under'] >= book_tp_lower) & 
-        #    (filtered_df['book_over_under'] <= book_tp_upper) |
-        #    (filtered_df['book_over_under'].isna())
-        #]
-        
-        #filtered_df = filtered_df[
-        #    (filtered_df['pred_vs_book_point_diff'] >= spread_value_lower) & 
-        #    (filtered_df['pred_vs_book_point_diff'] <= spread_value_upper) |
-        #    (filtered_df['pred_vs_book_point_diff'].isna())
-        #]
 
         filtered_df = filtered_df[
-            (filtered_df['pred_vs_book_ml_value'] >= ml_value_lower) & 
-            (filtered_df['pred_vs_book_ml_value'] <= ml_value_upper) |
-            (filtered_df['pred_vs_book_ml_value'].isna())
+            (filtered_df['book_over_under'] >= book_tp_lower) & 
+            (filtered_df['book_over_under'] <= book_tp_upper) |
+            (filtered_df['book_over_under'].isna())
         ]
-
-        #filtered_df = filtered_df[
-        #    (filtered_df['pred_vs_book_tp'] >= ou_value_lower) & 
-        #    (filtered_df['pred_vs_book_tp'] <= ou_value_upper) |
-        #    (filtered_df['pred_vs_book_tp'].isna())
-        #]                
         
-
-            
+    
             
         # Exclude rows with NAs if the user selects the option
         if exclude_na_ml:
             filtered_df = filtered_df.dropna(subset=['ml_winnings'])
             
-        if exclude_na_spread:
-            filtered_df = filtered_df.dropna(subset=['spread_winnings'])
 
         # Show the filtered data in Streamlit
         st.write("### Test Data")
@@ -899,7 +905,12 @@ def historical_results_page():
                 """, unsafe_allow_html=True)
 
 
-
+    st.write(" ")
+    st.write(" ")
+    st.write("'Confidence' represents (our predicted probability - 50%). For example, if a team has a 55% chance to cover, their cover confidence is 5%. Similarly, ML Value is a direct comparison of our predicted win " \
+    "probability vs the book's implicit win probability from ML. For example, if the book's win probability is 55% and ours is 60%, that's a 5% value.")
+    st.write("As a note, some moneyline values for games are incomplete in the data source. These appear as NAs. Others may be NA due to a lack of prior data in the season for one of the teams.")
+    
 
 
 
@@ -1012,7 +1023,7 @@ def playoff_page():
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
                 <div style="font-size:15px; font-weight:bold; color:{results_fr1.iloc[0]["winning_color"]}; text-align:center;">
-                    by {results_fr1.iloc[0]["point_margin"]}
+                    {results_fr1.iloc[0]["pred_winner_wp"]}% wp
                 </div>
             """, unsafe_allow_html=True)
             
@@ -1069,7 +1080,7 @@ def playoff_page():
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
                 <div style="font-size:15px; font-weight:bold; color:{results_fr2.iloc[0]["winning_color"]}; text-align:center;">
-                    by {results_fr2.iloc[0]["point_margin"]}
+                    {results_fr2.iloc[0]["pred_winner_wp"]}% wp
                 </div>
             """, unsafe_allow_html=True)
             
@@ -1127,7 +1138,7 @@ def playoff_page():
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
                 <div style="font-size:15px; font-weight:bold; color:{results_fr3.iloc[0]["winning_color"]}; text-align:center;">
-                    by {results_fr3.iloc[0]["point_margin"]}
+                    {results_fr3.iloc[0]["pred_winner_wp"]}% wp
                 </div>
             """, unsafe_allow_html=True)
             
@@ -1185,7 +1196,7 @@ def playoff_page():
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
                 <div style="font-size:15px; font-weight:bold; color:{results_fr4.iloc[0]["winning_color"]}; text-align:center;">
-                    by {results_fr4.iloc[0]["point_margin"]}
+                    {results_fr4.iloc[0]["pred_winner_wp"]}% wp
                 </div>
             """, unsafe_allow_html=True)
             
@@ -1251,7 +1262,7 @@ def playoff_page():
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
                 <div style="font-size:15px; font-weight:bold; color:{results_rb.iloc[0]["winning_color"]}; text-align:center;">
-                    by {results_rb.iloc[0]["point_margin"]}
+                    {results_rb.iloc[0]["pred_winner_wp"]}% wp
                 </div>
             """, unsafe_allow_html=True)
             
@@ -1308,7 +1319,7 @@ def playoff_page():
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
                 <div style="font-size:15px; font-weight:bold; color:{results_sb.iloc[0]["winning_color"]}; text-align:center;">
-                    by {results_sb.iloc[0]["point_margin"]}
+                    {results_sb.iloc[0]["pred_winner_wp"]}% wp
                 </div>
             """, unsafe_allow_html=True)
             
@@ -1366,7 +1377,7 @@ def playoff_page():
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
                 <div style="font-size:15px; font-weight:bold; color:{results_fb.iloc[0]["winning_color"]}; text-align:center;">
-                    by {results_fb.iloc[0]["point_margin"]}
+                    {results_fb.iloc[0]["pred_winner_wp"]}% wp
                 </div>
             """, unsafe_allow_html=True)
             
@@ -1424,7 +1435,7 @@ def playoff_page():
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
                 <div style="font-size:15px; font-weight:bold; color:{results_pb.iloc[0]["winning_color"]}; text-align:center;">
-                    by {results_pb.iloc[0]["point_margin"]}
+                    {results_pb.iloc[0]["pred_winner_wp"]}% wp
                 </div>
             """, unsafe_allow_html=True)
             
@@ -1491,7 +1502,7 @@ def playoff_page():
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
                 <div style="font-size:15px; font-weight:bold; color:{results_cb.iloc[0]["winning_color"]}; text-align:center;">
-                    by {results_cb.iloc[0]["point_margin"]}
+                    {results_cb.iloc[0]["pred_winner_wp"]}% wp
                 </div>
             """, unsafe_allow_html=True)
             
@@ -1548,7 +1559,7 @@ def playoff_page():
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
                 <div style="font-size:15px; font-weight:bold; color:{results_ob.iloc[0]["winning_color"]}; text-align:center;">
-                    by {results_ob.iloc[0]["point_margin"]}
+                    {results_ob.iloc[0]["pred_winner_wp"]}% wp
                 </div>
             """, unsafe_allow_html=True)
             
@@ -1614,7 +1625,7 @@ def playoff_page():
             # If override is checked, use a different color or text for the result
             st.markdown(f"""
                 <div style="font-size:15px; font-weight:bold; color:{results_nc.iloc[0]["winning_color"]}; text-align:center;">
-                    by {results_nc.iloc[0]["point_margin"]}
+                    {results_nc.iloc[0]["pred_winner_wp"]}% wp
                 </div>
             """, unsafe_allow_html=True)
             
@@ -1722,13 +1733,15 @@ def game_predictor_page():
         if results.iloc[0]["t1_win"] == 1:
                         st.markdown(f"""
                                 <div style="font-size:35px; font-weight:bold; color:{results.iloc[0]["winning_color"]}; text-align:center;">
-                                    {home_team} wins by {results.iloc[0]["pred_t1_point_diff"]}!
+                                    {home_team} wins! </div> <br> <div style="font-size:25px; font-weight:bold; color:{results.iloc[0]["winning_color"]}; text-align:center;">
+                                    {results.iloc[0]["pred_t1_wp"]}% win prob
                                 </div>
                             """, unsafe_allow_html=True)
         else:
                         st.markdown(f"""
                                 <div style="font-size:35px; font-weight:bold; color:{results.iloc[0]["winning_color"]}; text-align:center;">
-                                    {away_team} wins by {results.iloc[0]["pred_t1_point_diff"]*-1}!
+                                    {away_team} wins! </div> <br> <div style="font-size:25px; font-weight:bold; color:{results.iloc[0]["winning_color"]}; text-align:center;">
+                                    {100-results.iloc[0]["pred_t1_wp"]}% win prob
                                 </div>
                             """, unsafe_allow_html=True)
                         
@@ -1774,6 +1787,16 @@ def power_rankings_page():
 
 def this_week_page():
 
+                            # Initialize state
+    if "show_spread_input" not in st.session_state:
+        st.session_state.show_spread_input = False
+
+        # Function to toggle the input box
+    def toggle_spread_input():
+        st.session_state.show_spread_input = not st.session_state.show_spread_input    
+
+    new_spread = None    
+
     # Streamlit App
     st.title("This Week's Picks")
 
@@ -1796,6 +1819,8 @@ def this_week_page():
         <br> <span style="color: orange;"> Week {this_week} </span>
     </div>
     """, unsafe_allow_html=True) 
+
+    
 
 
     if page_choice == "All Games":
@@ -1825,13 +1850,13 @@ def this_week_page():
                 this_week_display_df = merged_predictions[["Home", "Away", "Spread Bet on:", "ML Bet on:", "O/U Bet on:", "Spread Value",
                     "ML Value", "O/U Value", "Home Conf", "Away Conf", "Neutral?"]].sort_values(by="Spread Value", ascending=False)
 
-                this_week_display_spread_df = merged_predictions[["Home", "Away", "Spread Bet on:", "Spread Value", "Pred Home Spread", "Book Home Spread",
+                this_week_display_spread_df = merged_predictions[["Home", "Away", "Spread Bet on:", "Spread Value", "Pred Home Cover Prob", "Book Home Spread",
                                                                 "Home Conf", "Away Conf", "Neutral?"]].sort_values(by="Spread Value", ascending=False)
 
-                this_week_display_ml_df = merged_predictions[["Home", "Away", "ML Value", "Pred Home Moneyline", "Book Home Moneyline", "Pred Away Moneyline", 
-                                                            "Book Away Moneyline", "Home Conf", "Away Conf", "Neutral?"]].sort_values(by="ML Value", ascending=False)
+                this_week_display_ml_df = merged_predictions[["Home", "Away", "ML Bet on:", "ML Value", "Pred Home Win Prob", "Book Home Win Prob", "Pred Away Win Prob", 
+                                                            "Book Away Win Prob", "Home Conf", "Away Conf", "Neutral?"]].sort_values(by="ML Value", ascending=False)
 
-                this_week_display_ou_df = merged_predictions[["Home", "Away", "O/U Bet on:", "O/U Value", "Pred Total Points", "Book O/U", "Home Conf", 
+                this_week_display_ou_df = merged_predictions[["Home", "Away", "O/U Bet on:", "O/U Value", "Pred Over Prob", "Book O/U", "Home Conf", 
                                                             "Away Conf", "Neutral?"]].sort_values(by="O/U Value", ascending=False)      
             
 
@@ -1914,6 +1939,8 @@ def this_week_page():
     
     
     else:
+            
+
 
             unique_matchups = sorted(pd.unique(merged_predictions["matchup"]))
 
@@ -1946,18 +1973,12 @@ def this_week_page():
                     st.write(" ")
                     st.write(" ")
 
-                    if filtered_df.iloc[0]["Pred Home Spread"] < 0:
-                        st.markdown(f"""
-                                    <div style="font-size:20px; color: white; text-align:left;">
-                                        Pred Spread: +{filtered_df.iloc[0]["Pred Home Spread"]*-1}
-                                    </div>
-                                """, unsafe_allow_html=True)  
-                    else:
-                        st.markdown(f"""
-                                    <div style="font-size:20px; color: white; text-align:left;">
-                                        Pred Spread: {filtered_df.iloc[0]["Pred Home Spread"]*-1}
-                                    </div>
-                                """, unsafe_allow_html=True)                            
+                    st.markdown(f"""
+                                <div style="font-size:20px; color: white; text-align:left;">
+                                    Pred Cover Prob: {100-filtered_df.iloc[0]["Pred Home Cover Prob"]}%
+                                </div>
+                            """, unsafe_allow_html=True)  
+                          
 
                     if filtered_df.iloc[0]["Book Home Spread"] < 0:
                         st.markdown(f"""
@@ -1972,16 +1993,16 @@ def this_week_page():
                                     </div>
                                 """, unsafe_allow_html=True)                             
 
-                    if filtered_df.iloc[0]["Pred Home Spread"] > filtered_df.iloc[0]["Book Home Spread"]:
+                    if filtered_df.iloc[0]["Pred Home Cover Prob"] <= 50:
                         st.markdown(f"""
                                     <div style="font-size:20px; color: green; font-weight:bold; text-align:left;">
-                                        To Cover Value: {filtered_df.iloc[0]["Spread Value"]}
+                                        To Cover Value: {filtered_df.iloc[0]["Spread Value"]}%
                                     </div>
                                 """, unsafe_allow_html=True)   
                     else:
                          st.markdown(f"""
                                     <div style="font-size:20px; color: red; font-weight:bold; text-align:left;">
-                                        To Cover Value: {filtered_df.iloc[0]["Spread Value"]*-1}
+                                        To Cover Value: {filtered_df.iloc[0]["Spread Value"]*-1}%
                                     </div>
                                 """, unsafe_allow_html=True)    
                     
@@ -2004,7 +2025,7 @@ def this_week_page():
 
                     st.markdown(f"""
                                 <div style="font-size:20px; color: white; text-align:left;">
-                                    Pred Win Prob: {round(filtered_df.iloc[0]["Pred Away Win Prob"]*100,2)}%
+                                    Pred Win Prob: {round(filtered_df.iloc[0]["Pred Away Win Prob"],2)}%
                                 </div>
                             """, unsafe_allow_html=True)                         
 
@@ -2023,20 +2044,27 @@ def this_week_page():
 
                     st.markdown(f"""
                                 <div style="font-size:20px; color: white; text-align:left;">
-                                    Book Imp Win Prob: {round(filtered_df.iloc[0]["Book Away Win Prob"]*100,2)}%
+                                    Book Imp Win Prob: {round(filtered_df.iloc[0]["Book Away Win Prob"],2)}%
                                 </div>
                             """, unsafe_allow_html=True)
 
-                    if filtered_df.iloc[0]["Pred Away Win Prob"] > filtered_df.iloc[0]["Book Away Win Prob"]:
-                        st.markdown(f"""
-                                    <div style="font-size:20px; color: green; font-weight:bold; text-align:left;">
-                                        To Hit Value: {filtered_df.iloc[0]["ML Value"]}%
-                                    </div>
-                                """, unsafe_allow_html=True)   
+                    if filtered_df.iloc[0]["Pred Away Win Prob"] - filtered_df.iloc[0]["Book Away Win Prob"] > filtered_df.iloc[0]["Pred Home Win Prob"] - filtered_df.iloc[0]["Book Home Win Prob"]:
+                        if filtered_df.iloc[0]["ML Value"] > 0:
+                            st.markdown(f"""
+                                        <div style="font-size:20px; color: green; font-weight:bold; text-align:left;">
+                                            To Hit Value: {filtered_df.iloc[0]["ML Value"]}%
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"""
+                                        <div style="font-size:20px; color: red; font-weight:bold; text-align:left;">
+                                            To Hit Value: {filtered_df.iloc[0]["ML Value"]}%
+                                        </div>
+                                    """, unsafe_allow_html=True)
                     else:
                          st.markdown(f"""
                                     <div style="font-size:20px; color: red; font-weight:bold; text-align:left;">
-                                        To Hit Value: {filtered_df.iloc[0]["ML Value"]*-1}%
+                                        To Hit Value: {filtered_df.iloc[0]["ML Losing Value"]}%
                                     </div>
                                 """, unsafe_allow_html=True)
                          
@@ -2147,7 +2175,7 @@ def this_week_page():
 
                 st.markdown(f"""
                         <div style="font-size:20px; color: white; text-align:center;">
-                            Pred O/U: {filtered_df.iloc[0]["Pred Total Points"]}
+                            Pred Over Prob: {filtered_df.iloc[0]["Pred Over Prob"]}%
                         </div>
                     """, unsafe_allow_html=True)
 
@@ -2157,28 +2185,54 @@ def this_week_page():
                         </div>
                     """, unsafe_allow_html=True)
                 
-                if filtered_df.iloc[0]["Pred Total Points"] > filtered_df.iloc[0]["Book O/U"]:
+                if filtered_df.iloc[0]["Pred Over Prob"] > 50:
                     st.markdown(f"""
                             <div style="font-size:20px; color: green; font-weight:bold; text-align:center;">
-                                Over Value: {filtered_df.iloc[0]["O/U Value"]}
+                                Over Value: {filtered_df.iloc[0]["O/U Value"]}%
                             </div>
                         """, unsafe_allow_html=True)
                     st.markdown(f"""
                             <div style="font-size:20px; color: red; font-weight:bold; text-align:center;">
-                                Under Value: {filtered_df.iloc[0]["O/U Value"]*-1}
+                                Under Value: {filtered_df.iloc[0]["O/U Value"]*-1}%
                             </div>
                         """, unsafe_allow_html=True)
                 else:
                     st.markdown(f"""
                             <div style="font-size:20px; color: red; font-weight:bold; text-align:center;">
-                                Over Value: {filtered_df.iloc[0]["O/U Value"]*-1}
+                                Over Value: {filtered_df.iloc[0]["O/U Value"]*-1}%
                             </div>
                         """, unsafe_allow_html=True)
                     st.markdown(f"""
                             <div style="font-size:20px; color: green; font-weight:bold; text-align:center;">
-                                Under Value: {filtered_df.iloc[0]["O/U Value"]}
+                                Under Value: {filtered_df.iloc[0]["O/U Value"]}%
                             </div>
                         """, unsafe_allow_html=True)
+                    
+
+
+
+
+                    # Alternative: Streamlit button but with centering
+                    st.markdown(
+                        """
+                        <style>
+                        div[data-testid="stButton"] {display: flex; justify-content: center;}
+                        </style>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    st.button("Change book spread?", on_click=toggle_spread_input)
+
+                    # If the toggle is active, show the input box
+                    if st.session_state.show_spread_input:
+                        new_spread = st.text_input("Enter new book spread:")
+
+                        if new_spread != "":
+                            try:
+                                float(new_spread)
+                            except:
+                                st.write("Please enter a numeric value!")
+
 
 
 
@@ -2201,18 +2255,14 @@ def this_week_page():
                 st.write(" ")
                 st.write(" ")
 
-                if filtered_df.iloc[0]["Pred Home Spread"] > 0:
-                    st.markdown(f"""
-                                <div style="font-size:20px; color: white; text-align:right;">
-                                    +{filtered_df.iloc[0]["Pred Home Spread"]} - Pred Spread
-                                </div>
-                            """, unsafe_allow_html=True)  
-                else:
-                    st.markdown(f"""
-                                <div style="font-size:20px; color: white; text-align:right;">
-                                    {filtered_df.iloc[0]["Pred Home Spread"]} - Pred Spread
-                                </div>
-                            """, unsafe_allow_html=True)                            
+
+                st.markdown(f"""
+                            <div style="font-size:20px; color: white; text-align:right;">
+                                {filtered_df.iloc[0]["Pred Home Cover Prob"]}% - Pred Cover Prob
+                            </div>
+                        """, unsafe_allow_html=True)  
+                
+                                             
 
                 if filtered_df.iloc[0]["Book Home Spread"] > 0:
                     st.markdown(f"""
@@ -2227,16 +2277,16 @@ def this_week_page():
                                 </div>
                             """, unsafe_allow_html=True)                             
 
-                if filtered_df.iloc[0]["Pred Home Spread"] < filtered_df.iloc[0]["Book Home Spread"]:
+                if filtered_df.iloc[0]["Pred Home Cover Prob"] >= 50:
                     st.markdown(f"""
                                 <div style="font-size:20px; color: green; font-weight:bold; text-align:right;">
-                                    {filtered_df.iloc[0]["Spread Value"]} - To Cover Value
+                                    {filtered_df.iloc[0]["Spread Value"]}% - To Cover Value
                                 </div>
                             """, unsafe_allow_html=True)   
                 else:
                         st.markdown(f"""
                                 <div style="font-size:20px; color: red; font-weight:bold; text-align:right;">
-                                    {filtered_df.iloc[0]["Spread Value"]*-1} - To Cover Value
+                                    {filtered_df.iloc[0]["Spread Value"]*-1}% - To Cover Value
                                 </div>
                             """, unsafe_allow_html=True)    
                 
@@ -2259,7 +2309,7 @@ def this_week_page():
 
                 st.markdown(f"""
                             <div style="font-size:20px; color: white; text-align:right;">
-                                {round(filtered_df.iloc[0]["Pred Home Win Prob"]*100,2)}% - Pred Win Prob
+                                {round(filtered_df.iloc[0]["Pred Home Win Prob"],2)}% - Pred Win Prob
                             </div>
                         """, unsafe_allow_html=True)                         
 
@@ -2278,20 +2328,27 @@ def this_week_page():
 
                 st.markdown(f"""
                             <div style="font-size:20px; color: white; text-align:right;">
-                                {round(filtered_df.iloc[0]["Book Home Win Prob"]*100,2)}% - Book Imp Win Prob
+                                {round(filtered_df.iloc[0]["Book Home Win Prob"],2)}% - Book Imp Win Prob
                             </div>
                         """, unsafe_allow_html=True)
 
-                if filtered_df.iloc[0]["Pred Home Win Prob"] > filtered_df.iloc[0]["Book Home Win Prob"]:
-                    st.markdown(f"""
-                                <div style="font-size:20px; color: green; font-weight:bold; text-align:right;">
-                                    {filtered_df.iloc[0]["ML Value"]}% - To Hit Value
-                                </div>
-                            """, unsafe_allow_html=True)   
+                if filtered_df.iloc[0]["Pred Home Win Prob"] - filtered_df.iloc[0]["Book Home Win Prob"] > filtered_df.iloc[0]["Pred Away Win Prob"] - filtered_df.iloc[0]["Book Away Win Prob"]:
+                    if filtered_df.iloc[0]["ML Value"]>0:
+                        st.markdown(f"""
+                                    <div style="font-size:20px; color: green; font-weight:bold; text-align:right;">
+                                        {filtered_df.iloc[0]["ML Value"]}% - To Hit Value
+                                    </div>
+                                """, unsafe_allow_html=True)  
+                    else:
+                        st.markdown(f"""
+                                    <div style="font-size:20px; color: red; font-weight:bold; text-align:right;">
+                                        {filtered_df.iloc[0]["ML Value"]}% - To Hit Value
+                                    </div>
+                                """, unsafe_allow_html=True)  
                 else:
                         st.markdown(f"""
-                                <div style="font-size:20px; color: red; text-align:right;">
-                                    {filtered_df.iloc[0]["ML Value"]*-1}% - To Hit Value 
+                                <div style="font-size:20px; color: red; font-weight:bold; text-align:right;">
+                                    {filtered_df.iloc[0]["ML Losing Value"]}% - To Hit Value 
                                 </div>
                             """, unsafe_allow_html=True)                
 
