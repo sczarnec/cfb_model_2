@@ -72,7 +72,7 @@ def make_merged_predictions(data):
         op_preds = predict_with_model(over_model, over_vars, data)
 
         # results dfs
-        results_df = sample_data[["t1_team", "t2_team", "t1_home", "neutral_site", "game_id"]].copy()
+        results_df = data[["t1_team", "t2_team", "t1_home", "neutral_site", "game_id"]].copy()
         results_df["cover_prob_pred"] = cp_preds
         results_df["win_prob_pred"] = wp_preds
         results_df["over_prob_pred"] = op_preds
@@ -126,7 +126,7 @@ def make_merged_predictions(data):
 
 
         # join in more info we need for betting comparisons
-        betting_join = sample_data[["t1_book_spread", "book_over_under", "t1_moneyline", "t2_moneyline", "t1_conference", "t2_conference", "game_id", "t1_team"]]
+        betting_join = data[["t1_book_spread", "book_over_under", "t1_moneyline", "t2_moneyline", "t1_conference", "t2_conference", "game_id", "t1_team"]]
         merged_predictions = final_predictions_df.merge(betting_join, left_on=["game_id","Home"], right_on=["game_id", "t1_team"], how="left")
 
 
@@ -1787,15 +1787,152 @@ def power_rankings_page():
 
 def this_week_page():
 
-                            # Initialize state
+    # --- Add near the top of this_week_page(), before you need the value ---
+    # State init
     if "show_spread_input" not in st.session_state:
         st.session_state.show_spread_input = False
+    if "new_spread_raw" not in st.session_state:
+        st.session_state.new_spread_raw = ""          # raw string from text_input
+    if "new_spread_val" not in st.session_state:
+        st.session_state.new_spread_val = None        # parsed float or None
+    if "new_spread_error" not in st.session_state:
+        st.session_state.new_spread_error = ""
 
-        # Function to toggle the input box
-    def toggle_spread_input():
-        st.session_state.show_spread_input = not st.session_state.show_spread_input    
+    if "show_hml_input" not in st.session_state:
+        st.session_state.show_hml_input = False
+    if "new_hml_raw" not in st.session_state:
+        st.session_state.new_hml_raw = ""          # raw string from text_input
+    if "new_hml_val" not in st.session_state:
+        st.session_state.new_hml_val = None        # parsed float or None
+    if "new_hml_error" not in st.session_state:
+        st.session_state.new_hml_error = ""          
 
-    new_spread = None    
+    if "show_aml_input" not in st.session_state:
+        st.session_state.show_aml_input = False
+    if "new_aml_raw" not in st.session_state:
+        st.session_state.new_aml_raw = ""          # raw string from text_input
+    if "new_aml_val" not in st.session_state:
+        st.session_state.new_aml_val = None        # parsed float or None
+    if "new_aml_error" not in st.session_state:
+        st.session_state.new_aml_error = ""            
+
+    if "show_over_input" not in st.session_state:
+        st.session_state.show_over_input = False
+    if "new_over_raw" not in st.session_state:
+        st.session_state.new_over_raw = ""          # raw string from text_input
+    if "new_over_val" not in st.session_state:
+        st.session_state.new_over_val = None        # parsed float or None
+    if "new_over_error" not in st.session_state:
+        st.session_state.new_over_error = ""        
+
+    # Helpers
+    def toggle_input():
+        st.session_state.show_spread_input = not st.session_state.show_spread_input
+        st.session_state.show_hml_input = not st.session_state.show_hml_input
+        st.session_state.show_aml_input = not st.session_state.show_aml_input
+        st.session_state.show_over_input = not st.session_state.show_over_input
+     
+
+    def _force_rerun():
+        # works on both older and newer Streamlit
+        if hasattr(st, "rerun"):
+            st.rerun()
+        else:
+            st.experimental_rerun()
+
+    def save_new_spread():
+        raw = (st.session_state.get("new_spread_raw", "") or "").strip()
+        if raw == "":
+            # empty input -> clear override
+            st.session_state.new_spread_val = None
+            st.session_state.new_spread_error = ""
+            #_force_rerun()
+            return
+        try:
+            st.session_state.new_spread_val = float(raw)
+            st.session_state.new_spread_error = ""
+        except ValueError:
+            st.session_state.new_spread_val = None
+            st.session_state.new_spread_error = "Please enter a numeric value"
+
+        
+
+    def save_new_hml():
+        raw = (st.session_state.get("new_hml_raw", "") or "").strip()
+        if raw == "":
+            # empty input -> clear override
+            st.session_state.new_hml_val = None
+            st.session_state.new_hml_error = ""
+            #_force_rerun()
+            return
+        try:
+            if raw.startswith("+"):
+                raw = raw[1:]            
+            st.session_state.new_hml_val = float(raw)
+            st.session_state.new_hml_error = ""
+        except ValueError:
+            st.session_state.new_hml_val = None
+            st.session_state.new_hml_error = "Please enter a numeric value"     
+
+
+    def save_new_aml():
+        raw = (st.session_state.get("new_aml_raw", "") or "").strip()
+        if raw == "":
+            # empty input -> clear override
+            st.session_state.new_aml_val = None
+            st.session_state.new_aml_error = ""
+            #_force_rerun()
+            return
+        try:
+            if raw.startswith("+"):
+                raw = raw[1:]
+            st.session_state.new_aml_val = float(raw)
+            st.session_state.new_aml_error = ""
+        except ValueError:
+            st.session_state.new_aml_val = None
+            st.session_state.new_aml_error = "Please enter a numeric value"                      
+
+
+    def save_new_over():
+        raw = (st.session_state.get("new_over_raw", "") or "").strip()
+        if raw == "":
+            # empty input -> clear override
+            st.session_state.new_over_val = None
+            st.session_state.new_over_error = ""
+            #_force_rerun()
+            return
+        try:
+            st.session_state.new_over_val = float(raw)
+            st.session_state.new_over_error = ""
+        except ValueError:
+            st.session_state.new_over_val = None
+            st.session_state.new_over_error = "Please enter a numeric value"        
+
+    def reset_lines():
+        st.session_state.show_spread_input = False
+        st.session_state.new_spread_raw = ""
+        st.session_state.new_spread_val = None  
+        st.session_state.new_spread_error = ""
+        
+        st.session_state.show_hml_input = False
+        st.session_state.new_hml_raw = ""
+        st.session_state.new_hml_val = None  
+        st.session_state.new_hml_error = ""  
+
+        st.session_state.show_aml_input = False
+        st.session_state.new_aml_raw = ""
+        st.session_state.new_aml_val = None  
+        st.session_state.new_aml_error = ""          
+
+        st.session_state.show_over_input = False
+        st.session_state.new_over_raw = ""
+        st.session_state.new_over_val = None  
+        st.session_state.new_over_error = ""      
+   
+
+   
+
+  
 
     # Streamlit App
     st.title("This Week's Picks")
@@ -1940,6 +2077,8 @@ def this_week_page():
     
     else:
             
+            
+
 
 
             unique_matchups = sorted(pd.unique(merged_predictions["matchup"]))
@@ -1949,16 +2088,70 @@ def this_week_page():
             matchup_options = st.selectbox(
                 "Select Matchup", 
                 options=unique_matchups,  
-                index=0  
+                index=0,
+                on_change=reset_lines
             )    
 
             filtered_df = merged_predictions.loc[merged_predictions["matchup"]==matchup_options]  
+            
+
+            if st.session_state.new_spread_val is not None and st.session_state.new_over_val is None:
+                new_spread = st.session_state.new_spread_val
+                current_home = filtered_df.iloc[0]["Home"]
+                mask = (sample_data["t1_team"].eq(current_home)) | (sample_data["t2_team"].eq(current_home))
+                cut_sample_data = sample_data.loc[mask].copy()
+                cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t1_book_spread"] = new_spread
+                cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t1_book_spread"] = -new_spread
+                filtered_df = make_merged_predictions(cut_sample_data)
+            elif st.session_state.new_spread_val is None and st.session_state.new_over_val is not None:
+                new_over = st.session_state.new_over_val
+                current_home = filtered_df.iloc[0]["Home"]
+                mask = (sample_data["t1_team"].eq(current_home)) | (sample_data["t2_team"].eq(current_home))
+                cut_sample_data = sample_data.loc[mask].copy()
+                cut_sample_data["book_over_under"] = new_over
+                filtered_df = make_merged_predictions(cut_sample_data)    
+            elif st.session_state.new_spread_val is not None and st.session_state.new_over_val is not None:
+                new_spread = st.session_state.new_spread_val
+                new_over = st.session_state.new_over_val
+                current_home = filtered_df.iloc[0]["Home"]
+                mask = (sample_data["t1_team"].eq(current_home)) | (sample_data["t2_team"].eq(current_home))
+                cut_sample_data = sample_data.loc[mask].copy()
+                cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t1_book_spread"] = new_spread
+                cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t1_book_spread"] = -new_spread
+                cut_sample_data["book_over_under"] = new_over
+                filtered_df = make_merged_predictions(cut_sample_data) 
+
+
+            if st.session_state.new_spread_val is not None or st.session_state.new_hml_val is not None or st.session_state.new_aml_val or st.session_state.new_over_val is not None:
+
+                
+                current_home = filtered_df.iloc[0]["Home"]
+                mask = (sample_data["t1_team"].eq(current_home)) | (sample_data["t2_team"].eq(current_home))
+                cut_sample_data = sample_data.loc[mask].copy()
+                if st.session_state.new_spread_val is not None:
+                    new_spread = st.session_state.new_spread_val
+                    cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t1_book_spread"] = new_spread
+                    cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t1_book_spread"] = -new_spread
+                if st.session_state.new_hml_val is not None:
+                    new_hml = st.session_state.new_hml_val
+                    cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t1_moneyline"] = new_hml
+                    cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t2_moneyline"] = new_hml   
+                if st.session_state.new_aml_val is not None:
+                    new_aml = st.session_state.new_aml_val
+                    cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t2_moneyline"] = new_aml
+                    cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t1_moneyline"] = new_aml                       
+                if st.session_state.new_over_val is not None:
+                    new_over = st.session_state.new_over_val
+                    cut_sample_data["book_over_under"] = new_over
+                filtered_df = make_merged_predictions(cut_sample_data) 
+        
 
             # Create columns for layout
             col1, col2, col3, col4, col5 = st.columns([3, .5, 3, .5, 3]) 
 
 
             with col1:
+
                     
                     st.write("")
 
@@ -2211,8 +2404,68 @@ def this_week_page():
 
 
 
+                    st.write(" ")
+                    st.write(" ")
+                    st.write(" ")
+                    
 
-                    # Alternative: Streamlit button but with centering
+
+
+
+                # Alternative: Streamlit button but with centering
+                st.markdown(
+                    """
+                    <style>
+                    div[data-testid="stButton"] {display: flex; justify-content: center;}
+                    </style>
+                    """,
+                    unsafe_allow_html=True
+                )
+                st.button("Change book lines?", on_click=toggle_input)
+
+                if st.session_state.show_spread_input:
+                    st.text_input(
+                        "Enter new book spread:",
+                        key="new_spread_raw",
+                        placeholder="e.g., -3.5",
+                        on_change=save_new_spread,   # <- stores float into session + reruns
+                    )
+                    if st.session_state.new_spread_error:
+                        st.warning(st.session_state.new_spread_error)
+
+                if st.session_state.show_hml_input:
+                    st.text_input(
+                        "Enter new book home ml:",
+                        key="new_hml_raw",
+                        placeholder="e.g., -230, 300",
+                        on_change=save_new_hml,   # <- stores float into session + reruns
+                    )
+                    if st.session_state.new_hml_error:
+                        st.warning(st.session_state.new_hml_error)  
+
+                if st.session_state.show_aml_input:
+                    st.text_input(
+                        "Enter new book away ml:",
+                        key="new_aml_raw",
+                        placeholder="e.g., -230, 300",
+                        on_change=save_new_aml,   # <- stores float into session + reruns
+                    )
+                    if st.session_state.new_aml_error:
+                        st.warning(st.session_state.new_aml_error)         
+
+
+
+                if st.session_state.show_over_input:
+                    st.text_input(
+                        "Enter new book over under:",
+                        key="new_over_raw",
+                        placeholder="e.g., 48.5",
+                        on_change=save_new_over,   # <- stores float into session + reruns
+                    )
+                    if st.session_state.new_over_error:
+                        st.warning(st.session_state.new_over_error)  
+
+                if st.session_state.show_spread_input or st.session_state.show_hml_input or st.session_state.show_aml_input or st.session_state.show_over_input:
                     st.markdown(
                         """
                         <style>
@@ -2221,17 +2474,9 @@ def this_week_page():
                         """,
                         unsafe_allow_html=True
                     )
-                    st.button("Change book spread?", on_click=toggle_spread_input)
+                    st.button("Reset Lines", on_click=reset_lines)                    
 
-                    # If the toggle is active, show the input box
-                    if st.session_state.show_spread_input:
-                        new_spread = st.text_input("Enter new book spread:")
 
-                        if new_spread != "":
-                            try:
-                                float(new_spread)
-                            except:
-                                st.write("Please enter a numeric value!")
 
 
 
