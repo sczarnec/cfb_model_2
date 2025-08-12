@@ -4,10 +4,19 @@ import numpy as np
 import csv
 import math
 import xgboost as xgb
+from streamlit_js_eval import streamlit_js_eval, get_user_agent
 
 
+st.set_page_config(layout="wide")
 
+# 1) Read viewport size from the browser
+width = streamlit_js_eval(js_expressions="window.innerWidth", key="get_width")
+# Optional: user agent if you want a second signal
+ua = get_user_agent() or ""
 
+# 2) Decide mobile vs desktop (tweak the breakpoint if you want)
+is_mobile = (width is not None and width < 768) or ("Mobi" in ua)
+#is_mobile = True
 
 #### READ IN CSVs
 
@@ -1968,6 +1977,10 @@ def this_week_page():
     st.write("To look at more information for Spread, ML, or O/U, select the 'Bet Type' filter. To sort by one of those values, select" \
     " that filter.")
 
+    st.write("Double check the lines listed for each game. If your book is different than what's shown, you can input your own customized lines in the single-game view")  
+
+    st.write(" ")  
+
     page_choice = st.selectbox(
         "Choose Display",
         ["All Games", "One Game"]
@@ -2099,532 +2112,1068 @@ def this_week_page():
     
     else:
             
+
+            if is_mobile:
             
 
 
+                    unique_matchups = sorted(pd.unique(merged_predictions["matchup"]))
 
-            unique_matchups = sorted(pd.unique(merged_predictions["matchup"]))
-
-            st.write("")
-
-            matchup_options = st.selectbox(
-                "Select Matchup", 
-                options=unique_matchups,  
-                index=0,
-                on_change=reset_lines
-            )    
-
-            filtered_df = merged_predictions.loc[merged_predictions["matchup"]==matchup_options]  
-            old_spread_val = filtered_df.iloc[0]["Book Home Spread"]
-            old_spread_upper = old_spread_val+4
-            old_spread_lower = old_spread_val-4
-            old_over_val = filtered_df.iloc[0]["Book O/U"]
-            old_over_upper = old_over_val+5
-            old_over_lower = old_over_val-5   
-
-            
-
-            if st.session_state.new_spread_val is not None and st.session_state.new_over_val is None:
-                new_spread = st.session_state.new_spread_val
-                current_home = filtered_df.iloc[0]["Home"]
-                mask = (sample_data["t1_team"].eq(current_home)) | (sample_data["t2_team"].eq(current_home))
-                cut_sample_data = sample_data.loc[mask].copy()
-                cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t1_book_spread"] = new_spread
-                cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t1_book_spread"] = -new_spread
-                filtered_df = make_merged_predictions(cut_sample_data)
-            elif st.session_state.new_spread_val is None and st.session_state.new_over_val is not None:
-                new_over = st.session_state.new_over_val
-                current_home = filtered_df.iloc[0]["Home"]
-                mask = (sample_data["t1_team"].eq(current_home)) | (sample_data["t2_team"].eq(current_home))
-                cut_sample_data = sample_data.loc[mask].copy()
-                cut_sample_data["book_over_under"] = new_over
-                filtered_df = make_merged_predictions(cut_sample_data)    
-            elif st.session_state.new_spread_val is not None and st.session_state.new_over_val is not None:
-                new_spread = st.session_state.new_spread_val
-                new_over = st.session_state.new_over_val
-                current_home = filtered_df.iloc[0]["Home"]
-                mask = (sample_data["t1_team"].eq(current_home)) | (sample_data["t2_team"].eq(current_home))
-                cut_sample_data = sample_data.loc[mask].copy()
-                cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t1_book_spread"] = new_spread
-                cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t1_book_spread"] = -new_spread
-                cut_sample_data["book_over_under"] = new_over
-                filtered_df = make_merged_predictions(cut_sample_data) 
-
-
-            if st.session_state.new_spread_val is not None or st.session_state.new_hml_val is not None or st.session_state.new_aml_val or st.session_state.new_over_val is not None:
-
-                
-                current_home = filtered_df.iloc[0]["Home"]
-                mask = (sample_data["t1_team"].eq(current_home)) | (sample_data["t2_team"].eq(current_home))
-                cut_sample_data = sample_data.loc[mask].copy()
-                if st.session_state.new_spread_val is not None:
-                    new_spread = st.session_state.new_spread_val
-                    cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t1_book_spread"] = new_spread
-                    cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t1_book_spread"] = -new_spread
-                if st.session_state.new_hml_val is not None:
-                    new_hml = st.session_state.new_hml_val
-                    cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t1_moneyline"] = new_hml
-                    cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t2_moneyline"] = new_hml   
-                if st.session_state.new_aml_val is not None:
-                    new_aml = st.session_state.new_aml_val
-                    cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t2_moneyline"] = new_aml
-                    cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t1_moneyline"] = new_aml                       
-                if st.session_state.new_over_val is not None:
-                    new_over = st.session_state.new_over_val
-                    cut_sample_data["book_over_under"] = new_over
-                filtered_df = make_merged_predictions(cut_sample_data) 
-        
-
-            # Create columns for layout
-            col1, col2, col3, col4, col5 = st.columns([3, .5, 3, .5, 3]) 
-
-
-            with col1:
-
-                    
                     st.write("")
 
-                    st.markdown("<div style='display: flex; justify-content: center;'><img src='" + filtered_df.iloc[0]["away_logo"] + "' width='150'></div>", unsafe_allow_html=True)
-            
-                    st.markdown(f"""
-                                <div style="font-size:35px; font-weight:bold; color:{filtered_df.iloc[0]["away_color"]}; text-align:center;">
-                                    {filtered_df.iloc[0]["Away"]}
-                                </div>
-                            """, unsafe_allow_html=True)
+                    matchup_options = st.selectbox(
+                        "Select Matchup", 
+                        options=unique_matchups,  
+                        index=0,
+                        on_change=reset_lines
+                    )    
+
+                    filtered_df = merged_predictions.loc[merged_predictions["matchup"]==matchup_options]  
+                    old_spread_val = filtered_df.iloc[0]["Book Home Spread"]
+                    old_spread_upper = old_spread_val+4
+                    old_spread_lower = old_spread_val-4
+                    old_over_val = filtered_df.iloc[0]["Book O/U"]
+                    old_over_upper = old_over_val+5
+                    old_over_lower = old_over_val-5   
+
                     
-                    st.write(" ")
-                    st.write(" ")
 
-                    st.markdown(f"""
-                                <div style="font-size:20px; color: white; text-align:left;">
-                                    Pred Cover Prob: {100-filtered_df.iloc[0]["Pred Home Cover Prob"]}%
-                                </div>
-                            """, unsafe_allow_html=True)  
-                          
+                    if st.session_state.new_spread_val is not None and st.session_state.new_over_val is None:
+                        new_spread = st.session_state.new_spread_val
+                        current_home = filtered_df.iloc[0]["Home"]
+                        mask = (sample_data["t1_team"].eq(current_home)) | (sample_data["t2_team"].eq(current_home))
+                        cut_sample_data = sample_data.loc[mask].copy()
+                        cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t1_book_spread"] = new_spread
+                        cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t1_book_spread"] = -new_spread
+                        filtered_df = make_merged_predictions(cut_sample_data)
+                    elif st.session_state.new_spread_val is None and st.session_state.new_over_val is not None:
+                        new_over = st.session_state.new_over_val
+                        current_home = filtered_df.iloc[0]["Home"]
+                        mask = (sample_data["t1_team"].eq(current_home)) | (sample_data["t2_team"].eq(current_home))
+                        cut_sample_data = sample_data.loc[mask].copy()
+                        cut_sample_data["book_over_under"] = new_over
+                        filtered_df = make_merged_predictions(cut_sample_data)    
+                    elif st.session_state.new_spread_val is not None and st.session_state.new_over_val is not None:
+                        new_spread = st.session_state.new_spread_val
+                        new_over = st.session_state.new_over_val
+                        current_home = filtered_df.iloc[0]["Home"]
+                        mask = (sample_data["t1_team"].eq(current_home)) | (sample_data["t2_team"].eq(current_home))
+                        cut_sample_data = sample_data.loc[mask].copy()
+                        cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t1_book_spread"] = new_spread
+                        cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t1_book_spread"] = -new_spread
+                        cut_sample_data["book_over_under"] = new_over
+                        filtered_df = make_merged_predictions(cut_sample_data) 
 
-                    if filtered_df.iloc[0]["Book Home Spread"] < 0:
-                        st.markdown(f"""
-                                    <div style="font-size:20px; color: white; text-align:left;">
-                                        Book Spread: +{filtered_df.iloc[0]["Book Home Spread"]*-1}
-                                    </div>
-                                """, unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"""
-                                    <div style="font-size:20px; color: white; text-align:left;">
-                                        Book Spread: {filtered_df.iloc[0]["Book Home Spread"]*-1}
-                                    </div>
-                                """, unsafe_allow_html=True)                             
 
-                    if filtered_df.iloc[0]["Pred Home Cover Prob"] <= 50:
-                        st.markdown(f"""
-                                    <div style="font-size:20px; color: green; font-weight:bold; text-align:left;">
-                                        To Cover Value: {filtered_df.iloc[0]["Spread Value"]}%
-                                    </div>
-                                """, unsafe_allow_html=True)   
-                    else:
-                         st.markdown(f"""
-                                    <div style="font-size:20px; color: red; font-weight:bold; text-align:left;">
-                                        To Cover Value: {filtered_df.iloc[0]["Spread Value"]*-1}%
-                                    </div>
-                                """, unsafe_allow_html=True)    
+                    if st.session_state.new_spread_val is not None or st.session_state.new_hml_val is not None or st.session_state.new_aml_val or st.session_state.new_over_val is not None:
+
+                        
+                        current_home = filtered_df.iloc[0]["Home"]
+                        mask = (sample_data["t1_team"].eq(current_home)) | (sample_data["t2_team"].eq(current_home))
+                        cut_sample_data = sample_data.loc[mask].copy()
+                        if st.session_state.new_spread_val is not None:
+                            new_spread = st.session_state.new_spread_val
+                            cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t1_book_spread"] = new_spread
+                            cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t1_book_spread"] = -new_spread
+                        if st.session_state.new_hml_val is not None:
+                            new_hml = st.session_state.new_hml_val
+                            cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t1_moneyline"] = new_hml
+                            cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t2_moneyline"] = new_hml   
+                        if st.session_state.new_aml_val is not None:
+                            new_aml = st.session_state.new_aml_val
+                            cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t2_moneyline"] = new_aml
+                            cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t1_moneyline"] = new_aml                       
+                        if st.session_state.new_over_val is not None:
+                            new_over = st.session_state.new_over_val
+                            cut_sample_data["book_over_under"] = new_over
+                        filtered_df = make_merged_predictions(cut_sample_data) 
+                
+
+                    # Create columns for layout
+                    col1, col2, col3, col4, col5, col6, col7 = st.columns([3, .5, 3, .5, 3, .5, 3]) 
+
+
+                    with col3:
+
+                            
+                            st.write("")
+
+                            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + filtered_df.iloc[0]["away_logo"] + "' width='150'></div>", unsafe_allow_html=True)
                     
-                    st.write(" ")
-                    st.write(" ")
-
-
-                    if filtered_df.iloc[0]["Pred Away Moneyline"] > 0:
-                        st.markdown(f"""
-                                    <div style="font-size:20px; color: white; text-align:left;">
-                                        Pred ML: +{int(round(filtered_df.iloc[0]["Pred Away Moneyline"],0))}
-                                    </div>
-                                """, unsafe_allow_html=True)   
-                    else:
-                        st.markdown(f"""
-                                    <div style="font-size:20px; color: white; text-align:left;">
-                                        Pred ML: {int(round(filtered_df.iloc[0]["Pred Away Moneyline"],0))}
-                                    </div>
-                                """, unsafe_allow_html=True)                           
-
-                    st.markdown(f"""
-                                <div style="font-size:20px; color: white; text-align:left;">
-                                    Pred Win Prob: {round(filtered_df.iloc[0]["Pred Away Win Prob"],2)}%
-                                </div>
-                            """, unsafe_allow_html=True)                         
-
-                    if filtered_df.iloc[0]["Book Away Moneyline"]>0:
                             st.markdown(f"""
-                                        <div style="font-size:20px; color: white; text-align:left;">
-                                            Book ML: +{int(round(filtered_df.iloc[0]["Book Away Moneyline"],0))}
+                                        <div style="font-size:35px; font-weight:bold; color:{filtered_df.iloc[0]["away_color"]}; text-align:center;">
+                                            {filtered_df.iloc[0]["Away"]}
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                            
+                            st.write(" ")
+                            st.write(" ")
+
+                            st.markdown(f"""
+                                        <div style="font-size:20px; color: gray; text-align:center;">
+                                            Pred Cover Prob: {100-filtered_df.iloc[0]["Pred Home Cover Prob"]}%
                                         </div>
                                     """, unsafe_allow_html=True)  
-                    else:  
+                                
+
+                            if filtered_df.iloc[0]["Book Home Spread"] < 0:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: gray; text-align:center;">
+                                                Book Spread: +{filtered_df.iloc[0]["Book Home Spread"]*-1}
+                                            </div>
+                                        """, unsafe_allow_html=True)
+                            else:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: gray; text-align:center;">
+                                                Book Spread: {filtered_df.iloc[0]["Book Home Spread"]*-1}
+                                            </div>
+                                        """, unsafe_allow_html=True)                             
+
+                            if filtered_df.iloc[0]["Pred Home Cover Prob"] <= 50:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: green; font-weight:bold; text-align:center;">
+                                                To Cover Value: {filtered_df.iloc[0]["Spread Value"]}%
+                                            </div>
+                                        """, unsafe_allow_html=True)   
+                            else:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: red; font-weight:bold; text-align:center;">
+                                                To Cover Value: {filtered_df.iloc[0]["Spread Value"]*-1}%
+                                            </div>
+                                        """, unsafe_allow_html=True)    
+                            
+                            st.write(" ")
+                            st.write(" ")
+
+
+                            if filtered_df.iloc[0]["Pred Away Moneyline"] > 0:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: gray; text-align:center;">
+                                                Pred ML: +{int(round(filtered_df.iloc[0]["Pred Away Moneyline"],0))}
+                                            </div>
+                                        """, unsafe_allow_html=True)   
+                            else:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: gray; text-align:center;">
+                                                Pred ML: {int(round(filtered_df.iloc[0]["Pred Away Moneyline"],0))}
+                                            </div>
+                                        """, unsafe_allow_html=True)                           
+
                             st.markdown(f"""
-                                        <div style="font-size:20px; color: white; text-align:left;">
-                                            Book ML: {int(round(filtered_df.iloc[0]["Book Away Moneyline"],0))}
+                                        <div style="font-size:20px; color: gray; text-align:center;">
+                                            Pred Win Prob: {round(filtered_df.iloc[0]["Pred Away Win Prob"],2)}%
                                         </div>
-                                    """, unsafe_allow_html=True)                             
+                                    """, unsafe_allow_html=True)                         
 
-                    st.markdown(f"""
-                                <div style="font-size:20px; color: white; text-align:left;">
-                                    Book Imp Win Prob: {round(filtered_df.iloc[0]["Book Away Win Prob"],2)}%
-                                </div>
-                            """, unsafe_allow_html=True)
+                            if filtered_df.iloc[0]["Book Away Moneyline"]>0:
+                                    st.markdown(f"""
+                                                <div style="font-size:20px; color: gray; text-align:center;">
+                                                    Book ML: +{int(round(filtered_df.iloc[0]["Book Away Moneyline"],0))}
+                                                </div>
+                                            """, unsafe_allow_html=True)  
+                            else:  
+                                    st.markdown(f"""
+                                                <div style="font-size:20px; color: gray; text-align:center;">
+                                                    Book ML: {int(round(filtered_df.iloc[0]["Book Away Moneyline"],0))}
+                                                </div>
+                                            """, unsafe_allow_html=True)                             
 
-                    if filtered_df.iloc[0]["Pred Away Win Prob"] - filtered_df.iloc[0]["Book Away Win Prob"] > filtered_df.iloc[0]["Pred Home Win Prob"] - filtered_df.iloc[0]["Book Home Win Prob"]:
-                        if filtered_df.iloc[0]["ML Value"] > 0:
                             st.markdown(f"""
-                                        <div style="font-size:20px; color: green; font-weight:bold; text-align:left;">
-                                            To Hit Value: {filtered_df.iloc[0]["ML Value"]}%
+                                        <div style="font-size:20px; color: gray; text-align:center;">
+                                            Book Imp Win Prob: {round(filtered_df.iloc[0]["Book Away Win Prob"],2)}%
+                                        </div>
+                                    """, unsafe_allow_html=True)
+
+                            if filtered_df.iloc[0]["Pred Away Win Prob"] - filtered_df.iloc[0]["Book Away Win Prob"] > filtered_df.iloc[0]["Pred Home Win Prob"] - filtered_df.iloc[0]["Book Home Win Prob"]:
+                                if filtered_df.iloc[0]["ML Value"] > 0:
+                                    st.markdown(f"""
+                                                <div style="font-size:20px; color: green; font-weight:bold; text-align:center;">
+                                                    To Hit Value: {filtered_df.iloc[0]["ML Value"]}%
+                                                </div>
+                                            """, unsafe_allow_html=True)
+                                else:
+                                    st.markdown(f"""
+                                                <div style="font-size:20px; color: red; font-weight:bold; text-align:center;">
+                                                    To Hit Value: {filtered_df.iloc[0]["ML Value"]}%
+                                                </div>
+                                            """, unsafe_allow_html=True)
+                            else:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: red; font-weight:bold; text-align:center;">
+                                                To Hit Value: {filtered_df.iloc[0]["ML Losing Value"]}%
+                                            </div>
+                                        """, unsafe_allow_html=True)
+                                
+
+        
+
+
+
+
+                    with col2:
+                        st.write("")
+
+
+                    with col1:
+
+                        st.write(" ")
+
+
+                        st.markdown(f"""
+                                    <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                        Bet on:
+                                    </div>
+                                """, unsafe_allow_html=True)   
+
+                        st.write(" ")  
+
+                        if filtered_df.iloc[0]["Spread Bet on:"] == filtered_df.iloc[0]["Home"]:
+                            if filtered_df.iloc[0]["Book Home Spread"] > 0:
+                                st.markdown(f"""
+                                            <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                                {filtered_df.iloc[0]["Spread Bet on:"]} +{filtered_df.iloc[0]["Book Home Spread"]}
+                                            </div>
+                                        """, unsafe_allow_html=True)    
+                            else:
+                                st.markdown(f"""
+                                            <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                                {filtered_df.iloc[0]["Spread Bet on:"]} {filtered_df.iloc[0]["Book Home Spread"]}
+                                            </div>
+                                        """, unsafe_allow_html=True)                           
+                        else:           
+                            if filtered_df.iloc[0]["Book Home Spread"]*-1 > 0:
+                                st.markdown(f"""
+                                            <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                                {filtered_df.iloc[0]["Spread Bet on:"]} +{filtered_df.iloc[0]["Book Home Spread"]*-1}
+                                            </div>
+                                        """, unsafe_allow_html=True)  
+                            else:
+                                st.markdown(f"""
+                                            <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                                {filtered_df.iloc[0]["Spread Bet on:"]} {filtered_df.iloc[0]["Book Home Spread"]*-1}
+                                            </div>
+                                        """, unsafe_allow_html=True)                     
+                            
+                        if filtered_df.iloc[0]["ML Bet on:"] == filtered_df.iloc[0]["Home"]:
+                            if filtered_df.iloc[0]["Book Home Moneyline"]>0:
+                                st.markdown(f"""
+                                        <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                            {filtered_df.iloc[0]["ML Bet on:"]} +{int(filtered_df.iloc[0]["Book Home Moneyline"])}
+                                        </div>
+                                    """, unsafe_allow_html=True) 
+                            else:
+                                st.markdown(f"""
+                                        <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                            {filtered_df.iloc[0]["ML Bet on:"]} {int(filtered_df.iloc[0]["Book Home Moneyline"])}
+                                        </div>
+                                    """, unsafe_allow_html=True)                            
+                        elif filtered_df.iloc[0]["ML Bet on:"] == filtered_df.iloc[0]["Away"]:  
+                            if filtered_df.iloc[0]["Book Away Moneyline"]>0:
+                                st.markdown(f"""
+                                        <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                            {filtered_df.iloc[0]["ML Bet on:"]} +{int(filtered_df.iloc[0]["Book Away Moneyline"])}
+                                        </div>
+                                    """, unsafe_allow_html=True)                      
+                            else:
+                                st.markdown(f"""
+                                        <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                            {filtered_df.iloc[0]["ML Bet on:"]} {int(filtered_df.iloc[0]["Book Away Moneyline"])}
+                                        </div>
+                                    """, unsafe_allow_html=True) 
+                        else:
+                            st.markdown(f"""
+                                    <div style="font-size:25px; color: gray; font-weight:bold; text-align:center;">
+                                        No ML Bet
+                                    </div>
+                                """, unsafe_allow_html=True)
+
+                        st.markdown(f"""
+                                    <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                        {filtered_df.iloc[0]["O/U Bet on:"]} {filtered_df.iloc[0]["Book O/U"]}
+                                    </div>
+                                """, unsafe_allow_html=True) 
+
+
+                        st.write(" ")                    
+                        st.write(" ") 
+                        st.write(" ") 
+             
+
+                        
+
+
+                        # Alternative: Streamlit button but with centering
+                        st.markdown(
+                            """
+                            <style>
+                            div[data-testid="stButton"] {display: flex; justify-content: center;}
+                            </style>
+                            """,
+                            unsafe_allow_html=True
+                        )
+                        st.button("Change book lines?", on_click=toggle_input)
+
+                        if st.session_state.show_spread_input:
+                            st.text_input(
+                                "Enter new book spread:",
+                                key="new_spread_raw",
+                                placeholder="e.g., -3.5",
+                                on_change=save_new_spread,   # <- stores float into session + reruns
+                            )
+                            if st.session_state.new_spread_error:
+                                st.warning(st.session_state.new_spread_error)
+
+                        if st.session_state.show_hml_input:
+                            st.text_input(
+                                "Enter new book home ml:",
+                                key="new_hml_raw",
+                                placeholder="e.g., -230, 300",
+                                on_change=save_new_hml,   # <- stores float into session + reruns
+                            )
+                            if st.session_state.new_hml_error:
+                                st.warning(st.session_state.new_hml_error)  
+
+                        if st.session_state.show_aml_input:
+                            st.text_input(
+                                "Enter new book away ml:",
+                                key="new_aml_raw",
+                                placeholder="e.g., -230, 300",
+                                on_change=save_new_aml,   # <- stores float into session + reruns
+                            )
+                            if st.session_state.new_aml_error:
+                                st.warning(st.session_state.new_aml_error)         
+
+
+
+                        if st.session_state.show_over_input:
+                            st.text_input(
+                                "Enter new book over under:",
+                                key="new_over_raw",
+                                placeholder="e.g., 48.5",
+                                on_change=save_new_over,   # <- stores float into session + reruns
+                            )
+                            if st.session_state.new_over_error:
+                                st.warning(st.session_state.new_over_error)  
+
+                        if st.session_state.show_spread_input or st.session_state.show_hml_input or st.session_state.show_aml_input or st.session_state.show_over_input:
+                            st.markdown(
+                                """
+                                <style>
+                                div[data-testid="stButton"] {display: flex; justify-content: center;}
+                                </style>
+                                """,
+                                unsafe_allow_html=True
+                            )
+                            st.button("Reset Lines", on_click=reset_lines)         
+
+
+                        st.write(" ")                    
+                        st.write(" ") 
+                        st.write(" ")                                        
+
+
+
+
+
+
+                    with col4:
+                        st.write("")
+
+
+                    with col5:
+
+                        st.write("") 
+
+                        st.markdown("<div style='display: flex; justify-content: center;'><img src='" + filtered_df.iloc[0]["home_logo"] + "' width='150'></div>", unsafe_allow_html=True)
+                                            
+                        st.markdown(f"""
+                                    <div style="font-size:35px; font-weight:bold; color:{filtered_df.iloc[0]["home_color"]}; text-align:center;">
+                                        {filtered_df.iloc[0]["Home"]}
+                                    </div>
+                                """, unsafe_allow_html=True)       
+
+                        st.write(" ")
+                        st.write(" ")
+
+
+                        st.markdown(f"""
+                                    <div style="font-size:20px; color: gray; text-align:center;">
+                                        Pred Cover Prob: {filtered_df.iloc[0]["Pred Home Cover Prob"]}%
+                                    </div>
+                                """, unsafe_allow_html=True)  
+                        
+                                                    
+
+                        if filtered_df.iloc[0]["Book Home Spread"] > 0:
+                            st.markdown(f"""
+                                        <div style="font-size:20px; color: gray; text-align:center;">
+                                            Book Spread: +{filtered_df.iloc[0]["Book Home Spread"]}
                                         </div>
                                     """, unsafe_allow_html=True)
                         else:
                             st.markdown(f"""
-                                        <div style="font-size:20px; color: red; font-weight:bold; text-align:left;">
-                                            To Hit Value: {filtered_df.iloc[0]["ML Value"]}%
+                                        <div style="font-size:20px; color: gray; text-align:center;">
+                                            Book Spread: {filtered_df.iloc[0]["Book Home Spread"]}
                                         </div>
-                                    """, unsafe_allow_html=True)
-                    else:
-                         st.markdown(f"""
-                                    <div style="font-size:20px; color: red; font-weight:bold; text-align:left;">
-                                        To Hit Value: {filtered_df.iloc[0]["ML Losing Value"]}%
+                                    """, unsafe_allow_html=True)                             
+
+                        if filtered_df.iloc[0]["Pred Home Cover Prob"] >= 50:
+                            st.markdown(f"""
+                                        <div style="font-size:20px; color: green; font-weight:bold; text-align:center;">
+                                            To Cover Value: {filtered_df.iloc[0]["Spread Value"]}%
+                                        </div>
+                                    """, unsafe_allow_html=True)   
+                        else:
+                                st.markdown(f"""
+                                        <div style="font-size:20px; color: red; font-weight:bold; text-align:center;">
+                                            To Cover Value: {filtered_df.iloc[0]["Spread Value"]*-1}%
+                                        </div>
+                                    """, unsafe_allow_html=True)    
+                        
+                        st.write(" ")
+                        st.write(" ")
+
+
+                        if filtered_df.iloc[0]["Pred Home Moneyline"] > 0:
+                            st.markdown(f"""
+                                        <div style="font-size:20px; color: gray; text-align:center;">
+                                            Pred ML: +{int(round(filtered_df.iloc[0]["Pred Home Moneyline"],0))}
+                                        </div>
+                                    """, unsafe_allow_html=True)   
+                        else:
+                            st.markdown(f"""
+                                        <div style="font-size:20px; color: gray; text-align:center;">
+                                            Pred ML: {int(round(filtered_df.iloc[0]["Pred Home Moneyline"],0))}
+                                        </div>
+                                    """, unsafe_allow_html=True)                           
+
+                        st.markdown(f"""
+                                    <div style="font-size:20px; color: gray; text-align:center;">
+                                        Pred Win Prob: {round(filtered_df.iloc[0]["Pred Home Win Prob"],2)}%
+                                    </div>
+                                """, unsafe_allow_html=True)                         
+
+                        if filtered_df.iloc[0]["Book Home Moneyline"]>0:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: gray; text-align:center;">
+                                                Book ML: +{int(round(filtered_df.iloc[0]["Book Home Moneyline"],0))}
+                                            </div>
+                                        """, unsafe_allow_html=True)  
+                        else:  
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: gray; text-align:center;">
+                                                Book ML: {int(round(filtered_df.iloc[0]["Book Home Moneyline"],0))}
+                                            </div>
+                                        """, unsafe_allow_html=True)                             
+
+                        st.markdown(f"""
+                                    <div style="font-size:20px; color: gray; text-align:center;">
+                                        Book Imp Win Prob: {round(filtered_df.iloc[0]["Book Home Win Prob"],2)}%
                                     </div>
                                 """, unsafe_allow_html=True)
-                         
 
- 
-
-
-
-
-            with col2:
-                st.write("")
-
-
-            with col3:
-
-                st.write("")
-
-
-                st.markdown(f"""
-                            <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
-                                Bet on:
-                            </div>
-                        """, unsafe_allow_html=True)   
-
-                st.write(" ")  
-
-                if filtered_df.iloc[0]["Spread Bet on:"] == filtered_df.iloc[0]["Home"]:
-                    if filtered_df.iloc[0]["Book Home Spread"] > 0:
-                        st.markdown(f"""
-                                    <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
-                                        {filtered_df.iloc[0]["Spread Bet on:"]} +{filtered_df.iloc[0]["Book Home Spread"]}
-                                    </div>
-                                """, unsafe_allow_html=True)    
-                    else:
-                        st.markdown(f"""
-                                    <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
-                                        {filtered_df.iloc[0]["Spread Bet on:"]} {filtered_df.iloc[0]["Book Home Spread"]}
-                                    </div>
-                                """, unsafe_allow_html=True)                           
-                else:           
-                    if filtered_df.iloc[0]["Book Home Spread"]*-1 > 0:
-                        st.markdown(f"""
-                                    <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
-                                        {filtered_df.iloc[0]["Spread Bet on:"]} +{filtered_df.iloc[0]["Book Home Spread"]*-1}
-                                    </div>
-                                """, unsafe_allow_html=True)  
-                    else:
-                         st.markdown(f"""
-                                    <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
-                                        {filtered_df.iloc[0]["Spread Bet on:"]} {filtered_df.iloc[0]["Book Home Spread"]*-1}
-                                    </div>
-                                """, unsafe_allow_html=True)                     
+                        if filtered_df.iloc[0]["Pred Home Win Prob"] - filtered_df.iloc[0]["Book Home Win Prob"] > filtered_df.iloc[0]["Pred Away Win Prob"] - filtered_df.iloc[0]["Book Away Win Prob"]:
+                            if filtered_df.iloc[0]["ML Value"]>0:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: green; font-weight:bold; text-align:center;">
+                                                To Hit Value: {filtered_df.iloc[0]["ML Value"]}%
+                                            </div>
+                                        """, unsafe_allow_html=True)  
+                            else:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: red; font-weight:bold; text-align:center;">
+                                                To Hit Value: {filtered_df.iloc[0]["ML Value"]}%
+                                            </div>
+                                        """, unsafe_allow_html=True)  
+                        else:
+                                st.markdown(f"""
+                                        <div style="font-size:20px; color: red; font-weight:bold; text-align:center;">
+                                            To Hit Value: {filtered_df.iloc[0]["ML Losing Value"]}% 
+                                        </div>
+                                    """, unsafe_allow_html=True)   
                     
-                if filtered_df.iloc[0]["ML Bet on:"] == filtered_df.iloc[0]["Home"]:
-                    if filtered_df.iloc[0]["Book Home Moneyline"]>0:
-                        st.markdown(f"""
-                                <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
-                                    {filtered_df.iloc[0]["ML Bet on:"]} +{int(filtered_df.iloc[0]["Book Home Moneyline"])}
-                                </div>
-                            """, unsafe_allow_html=True) 
-                    else:
-                        st.markdown(f"""
-                                <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
-                                    {filtered_df.iloc[0]["ML Bet on:"]} {int(filtered_df.iloc[0]["Book Home Moneyline"])}
-                                </div>
-                            """, unsafe_allow_html=True)                            
-                elif filtered_df.iloc[0]["ML Bet on:"] == filtered_df.iloc[0]["Away"]:  
-                    if filtered_df.iloc[0]["Book Away Moneyline"]>0:
-                        st.markdown(f"""
-                                <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
-                                    {filtered_df.iloc[0]["ML Bet on:"]} +{int(filtered_df.iloc[0]["Book Away Moneyline"])}
-                                </div>
-                            """, unsafe_allow_html=True)                      
-                    else:
-                        st.markdown(f"""
-                                <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
-                                    {filtered_df.iloc[0]["ML Bet on:"]} {int(filtered_df.iloc[0]["Book Away Moneyline"])}
-                                </div>
-                            """, unsafe_allow_html=True) 
-                else:
-                    st.markdown(f"""
-                            <div style="font-size:25px; color: white; font-weight:bold; text-align:center;">
-                                No ML Bet
-                            </div>
-                        """, unsafe_allow_html=True)
 
-                st.markdown(f"""
-                            <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
-                                {filtered_df.iloc[0]["O/U Bet on:"]} {filtered_df.iloc[0]["Book O/U"]}
-                            </div>
-                        """, unsafe_allow_html=True) 
+                    with col6:
+                        st.write("")
 
 
-                st.write(" ")                    
-                st.write(" ") 
-                st.write(" ") 
-                st.write(" ") 
-                st.write(" ")                    
-                st.write(" ") 
-                st.write(" ") 
-                st.write(" ") 
-                st.write(" ")                    
-                st.write(" ") 
-                st.write(" ") 
-                st.write(" ")   
-                st.write(" ") 
-                st.write(" ")                
+                    with col7:
+                            st.markdown(f"""
+                                    <div style="font-size:35px; font-weight:bold; color:orange; text-align:center;">
+                                        Over/Under
+                                    </div>
+                                """, unsafe_allow_html=True)       
 
-                st.markdown(f"""
-                        <div style="font-size:20px; color: white; text-align:center;">
-                            Pred Over Prob: {filtered_df.iloc[0]["Pred Over Prob"]}%
-                        </div>
-                    """, unsafe_allow_html=True)
+                            st.write(" ")
+                            st.write(" ")
 
-                st.markdown(f"""
-                        <div style="font-size:20px; color: white; text-align:center;">
-                            Book O/U: {filtered_df.iloc[0]["Book O/U"]}
-                        </div>
-                    """, unsafe_allow_html=True)
+
+                            st.markdown(f"""
+                                    <div style="font-size:20px; color: gray; text-align:center;">
+                                        Pred Over Prob: {filtered_df.iloc[0]["Pred Over Prob"]}%
+                                    </div>
+                                """, unsafe_allow_html=True)
+
+                            st.markdown(f"""
+                                    <div style="font-size:20px; color: gray; text-align:center;">
+                                        Book O/U: {filtered_df.iloc[0]["Book O/U"]}
+                                    </div>
+                                """, unsafe_allow_html=True)
+                            
+                            if filtered_df.iloc[0]["Pred Over Prob"] > 50:
+                                st.markdown(f"""
+                                        <div style="font-size:20px; color: green; font-weight:bold; text-align:center;">
+                                            Over Value: {filtered_df.iloc[0]["O/U Value"]}%
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                                st.markdown(f"""
+                                        <div style="font-size:20px; color: red; font-weight:bold; text-align:center;">
+                                            Under Value: {filtered_df.iloc[0]["O/U Value"]*-1}%
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                            else:
+                                st.markdown(f"""
+                                        <div style="font-size:20px; color: red; font-weight:bold; text-align:center;">
+                                            Over Value: {filtered_df.iloc[0]["O/U Value"]*-1}%
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                                st.markdown(f"""
+                                        <div style="font-size:20px; color: green; font-weight:bold; text-align:center;">
+                                            Under Value: {filtered_df.iloc[0]["O/U Value"]}%
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                                
+
+
                 
-                if filtered_df.iloc[0]["Pred Over Prob"] > 50:
-                    st.markdown(f"""
-                            <div style="font-size:20px; color: green; font-weight:bold; text-align:center;">
-                                Over Value: {filtered_df.iloc[0]["O/U Value"]}%
-                            </div>
-                        """, unsafe_allow_html=True)
-                    st.markdown(f"""
-                            <div style="font-size:20px; color: red; font-weight:bold; text-align:center;">
-                                Under Value: {filtered_df.iloc[0]["O/U Value"]*-1}%
-                            </div>
-                        """, unsafe_allow_html=True)
-                else:
-                    st.markdown(f"""
-                            <div style="font-size:20px; color: red; font-weight:bold; text-align:center;">
-                                Over Value: {filtered_df.iloc[0]["O/U Value"]*-1}%
-                            </div>
-                        """, unsafe_allow_html=True)
-                    st.markdown(f"""
-                            <div style="font-size:20px; color: green; font-weight:bold; text-align:center;">
-                                Under Value: {filtered_df.iloc[0]["O/U Value"]}%
-                            </div>
-                        """, unsafe_allow_html=True)
-                    
-
-
-
-                    st.write(" ")
-                    st.write(" ")
-                    st.write(" ")
-                    
-
-
-
-
-                # Alternative: Streamlit button but with centering
-                st.markdown(
-                    """
-                    <style>
-                    div[data-testid="stButton"] {display: flex; justify-content: center;}
-                    </style>
-                    """,
-                    unsafe_allow_html=True
-                )
-                st.button("Change book lines?", on_click=toggle_input)
-
-                if st.session_state.show_spread_input:
-                    st.text_input(
-                        "Enter new book spread:",
-                        key="new_spread_raw",
-                        placeholder="e.g., -3.5",
-                        on_change=save_new_spread,   # <- stores float into session + reruns
-                    )
-                    if st.session_state.new_spread_error:
-                        st.warning(st.session_state.new_spread_error)
-
-                if st.session_state.show_hml_input:
-                    st.text_input(
-                        "Enter new book home ml:",
-                        key="new_hml_raw",
-                        placeholder="e.g., -230, 300",
-                        on_change=save_new_hml,   # <- stores float into session + reruns
-                    )
-                    if st.session_state.new_hml_error:
-                        st.warning(st.session_state.new_hml_error)  
-
-                if st.session_state.show_aml_input:
-                    st.text_input(
-                        "Enter new book away ml:",
-                        key="new_aml_raw",
-                        placeholder="e.g., -230, 300",
-                        on_change=save_new_aml,   # <- stores float into session + reruns
-                    )
-                    if st.session_state.new_aml_error:
-                        st.warning(st.session_state.new_aml_error)         
-
-
-
-                if st.session_state.show_over_input:
-                    st.text_input(
-                        "Enter new book over under:",
-                        key="new_over_raw",
-                        placeholder="e.g., 48.5",
-                        on_change=save_new_over,   # <- stores float into session + reruns
-                    )
-                    if st.session_state.new_over_error:
-                        st.warning(st.session_state.new_over_error)  
-
-                if st.session_state.show_spread_input or st.session_state.show_hml_input or st.session_state.show_aml_input or st.session_state.show_over_input:
-                    st.markdown(
-                        """
-                        <style>
-                        div[data-testid="stButton"] {display: flex; justify-content: center;}
-                        </style>
-                        """,
-                        unsafe_allow_html=True
-                    )
-                    st.button("Reset Lines", on_click=reset_lines)                    
-
-
-
-
-
-
-            with col4:
-                st.write("")
-
-
-            with col5:
-
-                st.write("") 
-
-                st.markdown("<div style='display: flex; justify-content: center;'><img src='" + filtered_df.iloc[0]["home_logo"] + "' width='150'></div>", unsafe_allow_html=True)
-                                       
-                st.markdown(f"""
-                            <div style="font-size:35px; font-weight:bold; color:{filtered_df.iloc[0]["home_color"]}; text-align:center;">
-                                {filtered_df.iloc[0]["Home"]}
-                            </div>
-                        """, unsafe_allow_html=True)       
-
-                st.write(" ")
-                st.write(" ")
-
-
-                st.markdown(f"""
-                            <div style="font-size:20px; color: white; text-align:right;">
-                                {filtered_df.iloc[0]["Pred Home Cover Prob"]}% - Pred Cover Prob
-                            </div>
-                        """, unsafe_allow_html=True)  
                 
-                                             
+                
+            else:    
+            
 
-                if filtered_df.iloc[0]["Book Home Spread"] > 0:
-                    st.markdown(f"""
-                                <div style="font-size:20px; color: white; text-align:right;">
-                                    +{filtered_df.iloc[0]["Book Home Spread"]} - Book Spread
+
+                    unique_matchups = sorted(pd.unique(merged_predictions["matchup"]))
+
+                    st.write("")
+
+                    matchup_options = st.selectbox(
+                        "Select Matchup", 
+                        options=unique_matchups,  
+                        index=0,
+                        on_change=reset_lines
+                    )    
+
+                    filtered_df = merged_predictions.loc[merged_predictions["matchup"]==matchup_options]  
+                    old_spread_val = filtered_df.iloc[0]["Book Home Spread"]
+                    old_spread_upper = old_spread_val+4
+                    old_spread_lower = old_spread_val-4
+                    old_over_val = filtered_df.iloc[0]["Book O/U"]
+                    old_over_upper = old_over_val+5
+                    old_over_lower = old_over_val-5   
+
+                    
+
+                    if st.session_state.new_spread_val is not None and st.session_state.new_over_val is None:
+                        new_spread = st.session_state.new_spread_val
+                        current_home = filtered_df.iloc[0]["Home"]
+                        mask = (sample_data["t1_team"].eq(current_home)) | (sample_data["t2_team"].eq(current_home))
+                        cut_sample_data = sample_data.loc[mask].copy()
+                        cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t1_book_spread"] = new_spread
+                        cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t1_book_spread"] = -new_spread
+                        filtered_df = make_merged_predictions(cut_sample_data)
+                    elif st.session_state.new_spread_val is None and st.session_state.new_over_val is not None:
+                        new_over = st.session_state.new_over_val
+                        current_home = filtered_df.iloc[0]["Home"]
+                        mask = (sample_data["t1_team"].eq(current_home)) | (sample_data["t2_team"].eq(current_home))
+                        cut_sample_data = sample_data.loc[mask].copy()
+                        cut_sample_data["book_over_under"] = new_over
+                        filtered_df = make_merged_predictions(cut_sample_data)    
+                    elif st.session_state.new_spread_val is not None and st.session_state.new_over_val is not None:
+                        new_spread = st.session_state.new_spread_val
+                        new_over = st.session_state.new_over_val
+                        current_home = filtered_df.iloc[0]["Home"]
+                        mask = (sample_data["t1_team"].eq(current_home)) | (sample_data["t2_team"].eq(current_home))
+                        cut_sample_data = sample_data.loc[mask].copy()
+                        cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t1_book_spread"] = new_spread
+                        cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t1_book_spread"] = -new_spread
+                        cut_sample_data["book_over_under"] = new_over
+                        filtered_df = make_merged_predictions(cut_sample_data) 
+
+
+                    if st.session_state.new_spread_val is not None or st.session_state.new_hml_val is not None or st.session_state.new_aml_val or st.session_state.new_over_val is not None:
+
+                        
+                        current_home = filtered_df.iloc[0]["Home"]
+                        mask = (sample_data["t1_team"].eq(current_home)) | (sample_data["t2_team"].eq(current_home))
+                        cut_sample_data = sample_data.loc[mask].copy()
+                        if st.session_state.new_spread_val is not None:
+                            new_spread = st.session_state.new_spread_val
+                            cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t1_book_spread"] = new_spread
+                            cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t1_book_spread"] = -new_spread
+                        if st.session_state.new_hml_val is not None:
+                            new_hml = st.session_state.new_hml_val
+                            cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t1_moneyline"] = new_hml
+                            cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t2_moneyline"] = new_hml   
+                        if st.session_state.new_aml_val is not None:
+                            new_aml = st.session_state.new_aml_val
+                            cut_sample_data.loc[cut_sample_data["t1_team"].eq(current_home), "t2_moneyline"] = new_aml
+                            cut_sample_data.loc[cut_sample_data["t2_team"].eq(current_home), "t1_moneyline"] = new_aml                       
+                        if st.session_state.new_over_val is not None:
+                            new_over = st.session_state.new_over_val
+                            cut_sample_data["book_over_under"] = new_over
+                        filtered_df = make_merged_predictions(cut_sample_data) 
+                
+
+                    # Create columns for layout
+                    col1, col2, col3, col4, col5 = st.columns([3, .5, 3, .5, 3]) 
+
+
+                    with col1:
+
+                            
+                            st.write("")
+
+                            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + filtered_df.iloc[0]["away_logo"] + "' width='150'></div>", unsafe_allow_html=True)
+                    
+                            st.markdown(f"""
+                                        <div style="font-size:35px; font-weight:bold; color:{filtered_df.iloc[0]["away_color"]}; text-align:center;">
+                                            {filtered_df.iloc[0]["Away"]}
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                            
+                            st.write(" ")
+                            st.write(" ")
+
+                            st.markdown(f"""
+                                        <div style="font-size:20px; color: gray; text-align:left;">
+                                            Pred Cover Prob: {100-filtered_df.iloc[0]["Pred Home Cover Prob"]}%
+                                        </div>
+                                    """, unsafe_allow_html=True)  
+                                
+
+                            if filtered_df.iloc[0]["Book Home Spread"] < 0:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: gray; text-align:left;">
+                                                Book Spread: +{filtered_df.iloc[0]["Book Home Spread"]*-1}
+                                            </div>
+                                        """, unsafe_allow_html=True)
+                            else:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: gray; text-align:left;">
+                                                Book Spread: {filtered_df.iloc[0]["Book Home Spread"]*-1}
+                                            </div>
+                                        """, unsafe_allow_html=True)                             
+
+                            if filtered_df.iloc[0]["Pred Home Cover Prob"] <= 50:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: green; font-weight:bold; text-align:left;">
+                                                To Cover Value: {filtered_df.iloc[0]["Spread Value"]}%
+                                            </div>
+                                        """, unsafe_allow_html=True)   
+                            else:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: red; font-weight:bold; text-align:left;">
+                                                To Cover Value: {filtered_df.iloc[0]["Spread Value"]*-1}%
+                                            </div>
+                                        """, unsafe_allow_html=True)    
+                            
+                            st.write(" ")
+                            st.write(" ")
+
+
+                            if filtered_df.iloc[0]["Pred Away Moneyline"] > 0:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: gray; text-align:left;">
+                                                Pred ML: +{int(round(filtered_df.iloc[0]["Pred Away Moneyline"],0))}
+                                            </div>
+                                        """, unsafe_allow_html=True)   
+                            else:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: gray; text-align:left;">
+                                                Pred ML: {int(round(filtered_df.iloc[0]["Pred Away Moneyline"],0))}
+                                            </div>
+                                        """, unsafe_allow_html=True)                           
+
+                            st.markdown(f"""
+                                        <div style="font-size:20px; color: gray; text-align:left;">
+                                            Pred Win Prob: {round(filtered_df.iloc[0]["Pred Away Win Prob"],2)}%
+                                        </div>
+                                    """, unsafe_allow_html=True)                         
+
+                            if filtered_df.iloc[0]["Book Away Moneyline"]>0:
+                                    st.markdown(f"""
+                                                <div style="font-size:20px; color: gray; text-align:left;">
+                                                    Book ML: +{int(round(filtered_df.iloc[0]["Book Away Moneyline"],0))}
+                                                </div>
+                                            """, unsafe_allow_html=True)  
+                            else:  
+                                    st.markdown(f"""
+                                                <div style="font-size:20px; color: gray; text-align:left;">
+                                                    Book ML: {int(round(filtered_df.iloc[0]["Book Away Moneyline"],0))}
+                                                </div>
+                                            """, unsafe_allow_html=True)                             
+
+                            st.markdown(f"""
+                                        <div style="font-size:20px; color: gray; text-align:left;">
+                                            Book Imp Win Prob: {round(filtered_df.iloc[0]["Book Away Win Prob"],2)}%
+                                        </div>
+                                    """, unsafe_allow_html=True)
+
+                            if filtered_df.iloc[0]["Pred Away Win Prob"] - filtered_df.iloc[0]["Book Away Win Prob"] > filtered_df.iloc[0]["Pred Home Win Prob"] - filtered_df.iloc[0]["Book Home Win Prob"]:
+                                if filtered_df.iloc[0]["ML Value"] > 0:
+                                    st.markdown(f"""
+                                                <div style="font-size:20px; color: green; font-weight:bold; text-align:left;">
+                                                    To Hit Value: {filtered_df.iloc[0]["ML Value"]}%
+                                                </div>
+                                            """, unsafe_allow_html=True)
+                                else:
+                                    st.markdown(f"""
+                                                <div style="font-size:20px; color: red; font-weight:bold; text-align:left;">
+                                                    To Hit Value: {filtered_df.iloc[0]["ML Value"]}%
+                                                </div>
+                                            """, unsafe_allow_html=True)
+                            else:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: red; font-weight:bold; text-align:left;">
+                                                To Hit Value: {filtered_df.iloc[0]["ML Losing Value"]}%
+                                            </div>
+                                        """, unsafe_allow_html=True)
+                                
+
+        
+
+
+
+
+                    with col2:
+                        st.write("")
+
+
+                    with col3:
+
+                        st.write("")
+
+
+                        st.markdown(f"""
+                                    <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                        Bet on:
+                                    </div>
+                                """, unsafe_allow_html=True)   
+
+                        st.write(" ")  
+
+                        if filtered_df.iloc[0]["Spread Bet on:"] == filtered_df.iloc[0]["Home"]:
+                            if filtered_df.iloc[0]["Book Home Spread"] > 0:
+                                st.markdown(f"""
+                                            <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                                {filtered_df.iloc[0]["Spread Bet on:"]} +{filtered_df.iloc[0]["Book Home Spread"]}
+                                            </div>
+                                        """, unsafe_allow_html=True)    
+                            else:
+                                st.markdown(f"""
+                                            <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                                {filtered_df.iloc[0]["Spread Bet on:"]} {filtered_df.iloc[0]["Book Home Spread"]}
+                                            </div>
+                                        """, unsafe_allow_html=True)                           
+                        else:           
+                            if filtered_df.iloc[0]["Book Home Spread"]*-1 > 0:
+                                st.markdown(f"""
+                                            <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                                {filtered_df.iloc[0]["Spread Bet on:"]} +{filtered_df.iloc[0]["Book Home Spread"]*-1}
+                                            </div>
+                                        """, unsafe_allow_html=True)  
+                            else:
+                                st.markdown(f"""
+                                            <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                                {filtered_df.iloc[0]["Spread Bet on:"]} {filtered_df.iloc[0]["Book Home Spread"]*-1}
+                                            </div>
+                                        """, unsafe_allow_html=True)                     
+                            
+                        if filtered_df.iloc[0]["ML Bet on:"] == filtered_df.iloc[0]["Home"]:
+                            if filtered_df.iloc[0]["Book Home Moneyline"]>0:
+                                st.markdown(f"""
+                                        <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                            {filtered_df.iloc[0]["ML Bet on:"]} +{int(filtered_df.iloc[0]["Book Home Moneyline"])}
+                                        </div>
+                                    """, unsafe_allow_html=True) 
+                            else:
+                                st.markdown(f"""
+                                        <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                            {filtered_df.iloc[0]["ML Bet on:"]} {int(filtered_df.iloc[0]["Book Home Moneyline"])}
+                                        </div>
+                                    """, unsafe_allow_html=True)                            
+                        elif filtered_df.iloc[0]["ML Bet on:"] == filtered_df.iloc[0]["Away"]:  
+                            if filtered_df.iloc[0]["Book Away Moneyline"]>0:
+                                st.markdown(f"""
+                                        <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                            {filtered_df.iloc[0]["ML Bet on:"]} +{int(filtered_df.iloc[0]["Book Away Moneyline"])}
+                                        </div>
+                                    """, unsafe_allow_html=True)                      
+                            else:
+                                st.markdown(f"""
+                                        <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                            {filtered_df.iloc[0]["ML Bet on:"]} {int(filtered_df.iloc[0]["Book Away Moneyline"])}
+                                        </div>
+                                    """, unsafe_allow_html=True) 
+                        else:
+                            st.markdown(f"""
+                                    <div style="font-size:25px; color: gray; font-weight:bold; text-align:center;">
+                                        No ML Bet
+                                    </div>
+                                """, unsafe_allow_html=True)
+
+                        st.markdown(f"""
+                                    <div style="font-size:25px; color: gold; font-weight:bold; text-align:center;">
+                                        {filtered_df.iloc[0]["O/U Bet on:"]} {filtered_df.iloc[0]["Book O/U"]}
+                                    </div>
+                                """, unsafe_allow_html=True) 
+
+
+                        st.write(" ")                    
+                        st.write(" ") 
+                        st.write(" ") 
+                        st.write(" ") 
+                        st.write(" ")                    
+                        st.write(" ") 
+                        st.write(" ") 
+                        st.write(" ") 
+                        st.write(" ")                    
+                        st.write(" ") 
+                        st.write(" ") 
+                        st.write(" ")   
+                        st.write(" ") 
+                        st.write(" ")                
+
+                        st.markdown(f"""
+                                <div style="font-size:20px; color: gray; text-align:center;">
+                                    Pred Over Prob: {filtered_df.iloc[0]["Pred Over Prob"]}%
                                 </div>
                             """, unsafe_allow_html=True)
-                else:
-                    st.markdown(f"""
-                                <div style="font-size:20px; color: white; text-align:right;">
-                                    {filtered_df.iloc[0]["Book Home Spread"]} - Book Spread
-                                </div>
-                            """, unsafe_allow_html=True)                             
 
-                if filtered_df.iloc[0]["Pred Home Cover Prob"] >= 50:
-                    st.markdown(f"""
-                                <div style="font-size:20px; color: green; font-weight:bold; text-align:right;">
-                                    {filtered_df.iloc[0]["Spread Value"]}% - To Cover Value
-                                </div>
-                            """, unsafe_allow_html=True)   
-                else:
                         st.markdown(f"""
-                                <div style="font-size:20px; color: red; font-weight:bold; text-align:right;">
-                                    {filtered_df.iloc[0]["Spread Value"]*-1}% - To Cover Value
+                                <div style="font-size:20px; color: gray; text-align:center;">
+                                    Book O/U: {filtered_df.iloc[0]["Book O/U"]}
                                 </div>
-                            """, unsafe_allow_html=True)    
-                
-                st.write(" ")
-                st.write(" ")
+                            """, unsafe_allow_html=True)
+                        
+                        if filtered_df.iloc[0]["Pred Over Prob"] > 50:
+                            st.markdown(f"""
+                                    <div style="font-size:20px; color: green; font-weight:bold; text-align:center;">
+                                        Over Value: {filtered_df.iloc[0]["O/U Value"]}%
+                                    </div>
+                                """, unsafe_allow_html=True)
+                            st.markdown(f"""
+                                    <div style="font-size:20px; color: red; font-weight:bold; text-align:center;">
+                                        Under Value: {filtered_df.iloc[0]["O/U Value"]*-1}%
+                                    </div>
+                                """, unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"""
+                                    <div style="font-size:20px; color: red; font-weight:bold; text-align:center;">
+                                        Over Value: {filtered_df.iloc[0]["O/U Value"]*-1}%
+                                    </div>
+                                """, unsafe_allow_html=True)
+                            st.markdown(f"""
+                                    <div style="font-size:20px; color: green; font-weight:bold; text-align:center;">
+                                        Under Value: {filtered_df.iloc[0]["O/U Value"]}%
+                                    </div>
+                                """, unsafe_allow_html=True)
+                            
 
 
-                if filtered_df.iloc[0]["Pred Home Moneyline"] > 0:
-                    st.markdown(f"""
-                                <div style="font-size:20px; color: white; text-align:right;">
-                                    +{int(round(filtered_df.iloc[0]["Pred Home Moneyline"],0))} - Pred ML
-                                </div>
-                            """, unsafe_allow_html=True)   
-                else:
-                    st.markdown(f"""
-                                <div style="font-size:20px; color: white; text-align:right;">
-                                    {int(round(filtered_df.iloc[0]["Pred Home Moneyline"],0))} - Pred ML
-                                </div>
-                            """, unsafe_allow_html=True)                           
 
-                st.markdown(f"""
-                            <div style="font-size:20px; color: white; text-align:right;">
-                                {round(filtered_df.iloc[0]["Pred Home Win Prob"],2)}% - Pred Win Prob
-                            </div>
-                        """, unsafe_allow_html=True)                         
+                            st.write(" ")
+                            st.write(" ")
+                            st.write(" ")
+                            
 
-                if filtered_df.iloc[0]["Book Home Moneyline"]>0:
+
+
+
+                        # Alternative: Streamlit button but with centering
+                        st.markdown(
+                            """
+                            <style>
+                            div[data-testid="stButton"] {display: flex; justify-content: center;}
+                            </style>
+                            """,
+                            unsafe_allow_html=True
+                        )
+                        st.button("Change book lines?", on_click=toggle_input)
+
+                        if st.session_state.show_spread_input:
+                            st.text_input(
+                                "Enter new book spread:",
+                                key="new_spread_raw",
+                                placeholder="e.g., -3.5",
+                                on_change=save_new_spread,   # <- stores float into session + reruns
+                            )
+                            if st.session_state.new_spread_error:
+                                st.warning(st.session_state.new_spread_error)
+
+                        if st.session_state.show_hml_input:
+                            st.text_input(
+                                "Enter new book home ml:",
+                                key="new_hml_raw",
+                                placeholder="e.g., -230, 300",
+                                on_change=save_new_hml,   # <- stores float into session + reruns
+                            )
+                            if st.session_state.new_hml_error:
+                                st.warning(st.session_state.new_hml_error)  
+
+                        if st.session_state.show_aml_input:
+                            st.text_input(
+                                "Enter new book away ml:",
+                                key="new_aml_raw",
+                                placeholder="e.g., -230, 300",
+                                on_change=save_new_aml,   # <- stores float into session + reruns
+                            )
+                            if st.session_state.new_aml_error:
+                                st.warning(st.session_state.new_aml_error)         
+
+
+
+                        if st.session_state.show_over_input:
+                            st.text_input(
+                                "Enter new book over under:",
+                                key="new_over_raw",
+                                placeholder="e.g., 48.5",
+                                on_change=save_new_over,   # <- stores float into session + reruns
+                            )
+                            if st.session_state.new_over_error:
+                                st.warning(st.session_state.new_over_error)  
+
+                        if st.session_state.show_spread_input or st.session_state.show_hml_input or st.session_state.show_aml_input or st.session_state.show_over_input:
+                            st.markdown(
+                                """
+                                <style>
+                                div[data-testid="stButton"] {display: flex; justify-content: center;}
+                                </style>
+                                """,
+                                unsafe_allow_html=True
+                            )
+                            st.button("Reset Lines", on_click=reset_lines)                    
+
+
+
+
+
+
+                    with col4:
+                        st.write("")
+
+
+                    with col5:
+
+                        st.write("") 
+
+                        st.markdown("<div style='display: flex; justify-content: center;'><img src='" + filtered_df.iloc[0]["home_logo"] + "' width='150'></div>", unsafe_allow_html=True)
+                                            
                         st.markdown(f"""
-                                    <div style="font-size:20px; color: white; text-align:right;">
-                                        +{int(round(filtered_df.iloc[0]["Book Home Moneyline"],0))} - Book ML
+                                    <div style="font-size:35px; font-weight:bold; color:{filtered_df.iloc[0]["home_color"]}; text-align:center;">
+                                        {filtered_df.iloc[0]["Home"]}
+                                    </div>
+                                """, unsafe_allow_html=True)       
+
+                        st.write(" ")
+                        st.write(" ")
+
+
+                        st.markdown(f"""
+                                    <div style="font-size:20px; color: gray; text-align:right;">
+                                        {filtered_df.iloc[0]["Pred Home Cover Prob"]}% - Pred Cover Prob
                                     </div>
                                 """, unsafe_allow_html=True)  
-                else:  
-                        st.markdown(f"""
-                                    <div style="font-size:20px; color: white; text-align:right;">
-                                        {int(round(filtered_df.iloc[0]["Book Home Moneyline"],0))} - Book ML
-                                    </div>
-                                """, unsafe_allow_html=True)                             
+                        
+                                                    
 
-                st.markdown(f"""
-                            <div style="font-size:20px; color: white; text-align:right;">
-                                {round(filtered_df.iloc[0]["Book Home Win Prob"],2)}% - Book Imp Win Prob
-                            </div>
-                        """, unsafe_allow_html=True)
+                        if filtered_df.iloc[0]["Book Home Spread"] > 0:
+                            st.markdown(f"""
+                                        <div style="font-size:20px; color: gray; text-align:right;">
+                                            +{filtered_df.iloc[0]["Book Home Spread"]} - Book Spread
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"""
+                                        <div style="font-size:20px; color: gray; text-align:right;">
+                                            {filtered_df.iloc[0]["Book Home Spread"]} - Book Spread
+                                        </div>
+                                    """, unsafe_allow_html=True)                             
 
-                if filtered_df.iloc[0]["Pred Home Win Prob"] - filtered_df.iloc[0]["Book Home Win Prob"] > filtered_df.iloc[0]["Pred Away Win Prob"] - filtered_df.iloc[0]["Book Away Win Prob"]:
-                    if filtered_df.iloc[0]["ML Value"]>0:
+                        if filtered_df.iloc[0]["Pred Home Cover Prob"] >= 50:
+                            st.markdown(f"""
+                                        <div style="font-size:20px; color: green; font-weight:bold; text-align:right;">
+                                            {filtered_df.iloc[0]["Spread Value"]}% - To Cover Value
+                                        </div>
+                                    """, unsafe_allow_html=True)   
+                        else:
+                                st.markdown(f"""
+                                        <div style="font-size:20px; color: red; font-weight:bold; text-align:right;">
+                                            {filtered_df.iloc[0]["Spread Value"]*-1}% - To Cover Value
+                                        </div>
+                                    """, unsafe_allow_html=True)    
+                        
+                        st.write(" ")
+                        st.write(" ")
+
+
+                        if filtered_df.iloc[0]["Pred Home Moneyline"] > 0:
+                            st.markdown(f"""
+                                        <div style="font-size:20px; color: gray; text-align:right;">
+                                            +{int(round(filtered_df.iloc[0]["Pred Home Moneyline"],0))} - Pred ML
+                                        </div>
+                                    """, unsafe_allow_html=True)   
+                        else:
+                            st.markdown(f"""
+                                        <div style="font-size:20px; color: gray; text-align:right;">
+                                            {int(round(filtered_df.iloc[0]["Pred Home Moneyline"],0))} - Pred ML
+                                        </div>
+                                    """, unsafe_allow_html=True)                           
+
                         st.markdown(f"""
-                                    <div style="font-size:20px; color: green; font-weight:bold; text-align:right;">
-                                        {filtered_df.iloc[0]["ML Value"]}% - To Hit Value
+                                    <div style="font-size:20px; color: gray; text-align:right;">
+                                        {round(filtered_df.iloc[0]["Pred Home Win Prob"],2)}% - Pred Win Prob
                                     </div>
-                                """, unsafe_allow_html=True)  
-                    else:
+                                """, unsafe_allow_html=True)                         
+
+                        if filtered_df.iloc[0]["Book Home Moneyline"]>0:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: gray; text-align:right;">
+                                                +{int(round(filtered_df.iloc[0]["Book Home Moneyline"],0))} - Book ML
+                                            </div>
+                                        """, unsafe_allow_html=True)  
+                        else:  
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: gray; text-align:right;">
+                                                {int(round(filtered_df.iloc[0]["Book Home Moneyline"],0))} - Book ML
+                                            </div>
+                                        """, unsafe_allow_html=True)                             
+
                         st.markdown(f"""
-                                    <div style="font-size:20px; color: red; font-weight:bold; text-align:right;">
-                                        {filtered_df.iloc[0]["ML Value"]}% - To Hit Value
+                                    <div style="font-size:20px; color: gray; text-align:right;">
+                                        {round(filtered_df.iloc[0]["Book Home Win Prob"],2)}% - Book Imp Win Prob
                                     </div>
-                                """, unsafe_allow_html=True)  
-                else:
-                        st.markdown(f"""
-                                <div style="font-size:20px; color: red; font-weight:bold; text-align:right;">
-                                    {filtered_df.iloc[0]["ML Losing Value"]}% - To Hit Value 
-                                </div>
-                            """, unsafe_allow_html=True)                
+                                """, unsafe_allow_html=True)
+
+                        if filtered_df.iloc[0]["Pred Home Win Prob"] - filtered_df.iloc[0]["Book Home Win Prob"] > filtered_df.iloc[0]["Pred Away Win Prob"] - filtered_df.iloc[0]["Book Away Win Prob"]:
+                            if filtered_df.iloc[0]["ML Value"]>0:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: green; font-weight:bold; text-align:right;">
+                                                {filtered_df.iloc[0]["ML Value"]}% - To Hit Value
+                                            </div>
+                                        """, unsafe_allow_html=True)  
+                            else:
+                                st.markdown(f"""
+                                            <div style="font-size:20px; color: red; font-weight:bold; text-align:right;">
+                                                {filtered_df.iloc[0]["ML Value"]}% - To Hit Value
+                                            </div>
+                                        """, unsafe_allow_html=True)  
+                        else:
+                                st.markdown(f"""
+                                        <div style="font-size:20px; color: red; font-weight:bold; text-align:right;">
+                                            {filtered_df.iloc[0]["ML Losing Value"]}% - To Hit Value 
+                                        </div>
+                                    """, unsafe_allow_html=True)            
 
 
         
