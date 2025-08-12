@@ -26,24 +26,24 @@ theor_agg = theor_agg.drop(theor_agg.columns[0], axis=1)
 
 # load  model
 cover_model = xgb.Booster()
-cover_model.load_model("saved_models/20247_actual_t1_cover_model.model")
+cover_model.load_model("test_app_saved_models/20247_actual_t1_cover_model.model")
 # load point diff vars
-cover_vars = pd.read_csv("saved_models/20247_actual_t1_covermodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
+cover_vars = pd.read_csv("test_app_saved_models/20247_actual_t1_covermodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
 cover_vars = cover_vars.astype(str).str.strip().tolist()
 
 
 # load win prob model
 wp_model = xgb.Booster()
-wp_model.load_model("saved_models/20247_t1_win_model.model")
+wp_model.load_model("test_app_saved_models/20247_t1_win_model.model")
 # load point diff vars
-wp_vars = pd.read_csv("saved_models/20247_t1_winmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
+wp_vars = pd.read_csv("test_app_saved_models/20247_t1_winmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
 wp_vars = wp_vars.astype(str).str.strip().tolist()
 
 # load over/under model
 over_model = xgb.Booster()
-over_model.load_model("saved_models/20247_actual_over_model.model")
+over_model.load_model("test_app_saved_models/20247_actual_over_model.model")
 # load point diff vars
-over_vars = pd.read_csv("saved_models/20247_actual_overmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
+over_vars = pd.read_csv("test_app_saved_models/20247_actual_overmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
 over_vars = over_vars.astype(str).str.strip().tolist()
 
 # load this week's data for XGB
