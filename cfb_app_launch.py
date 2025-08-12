@@ -7,13 +7,15 @@ import xgboost as xgb
 
 
 
+
+
 #### READ IN CSVs
 
 
 ## GONNA HAVE TO CHANGE A LOT OF THESE ONCE AUTOMATED
 
 # Read in historical betting data
-historical_data = pd.read_csv("final_prediction_df_21to24.csv", encoding="utf-8", sep=",", header=0)
+historical_data = pd.read_csv("maybe_final_preds.csv", encoding="utf-8", sep=",", header=0)
 
 
 # load theoretical data
@@ -49,6 +51,9 @@ sample_data = pd.read_csv("model_prepped_this_week_test.csv", encoding="utf-8", 
 
 # load team info data
 team_info = pd.read_csv("team_info.csv", encoding="utf-8", sep=",", header=0)
+
+# load team info data
+poll_rankings = pd.read_csv("this_week_ranks.csv", encoding="utf-8", sep=",", header=0)
 
 # extract this week value
 this_week = theor_prepped['week'].max()
@@ -435,10 +440,11 @@ def historical_results_page():
     st.title('Model Performance on Historical Test Data')
 
     st.write("This is how well our model would perform on previous games over the last few years versus how well a random 50/50 guesser would perform. Only test data (games not included in model training) are included here.")
-    st.write("Last thing: these returns are assuming you bet the same units for hundreds of games. If you use the model on one game, the return is either gonna be 0 or ~95%. If you bet on 100, it will look more like this projected reutrn. It's a sample size game: it won't get every game right but will hopefully be profitable over time.")
+    st.write("These returns are assuming you bet the same units for hundreds of games. If you use the model on one game, the return is either gonna be 0 or ~95%. If you bet on 100, it will look more like this projected reutrn. It's a sample size game: it won't get every game right but will be profitable over time.")
+    st.write("As a note: the spread model is significantly profitable when the 'Cover Confidence' is at 4%. The moneyline model is profitable regardless. The O/U model is not profitable.")
     st.write("More notes/considerations are at the bottom of this page")
 
-    df = historical_data
+    df = historical_data.copy()
 
     # convert point diff into spread
     #df['book_t1_spread'] = df['book_t1_point_diff']*-1
@@ -515,7 +521,7 @@ def historical_results_page():
         # Filter for pred vs book (manual number input with bounds)
         # use int and floor/ceiling so the bounds don't round down and exclude outer bound games
         ml_value_lower, ml_value_upper = st.slider(
-            "Our win prob compared to sportsbooks'",
+            "ML Value",
             min_value=float(round(df['ml_value'].min(),2))-.01,
             max_value=float(round(df['ml_value'].max(),2))+.01,
             value=(float(round(df['ml_value'].min(),2))-.01 , float(round(df['ml_value'].max(),2))+.01),
@@ -574,41 +580,41 @@ def historical_results_page():
     # last column, filtered data frame
     with col4:
         # Apply filters based on selections
-        filtered_df = df
+        filtered_hist_df = df.copy()
 
         if team_options != "All":
-            filtered_df = filtered_df[filtered_df['t1_team'].eq(team_options) | filtered_df['t2_team'].eq(team_options)]
+            filtered_hist_df = filtered_hist_df[filtered_hist_df['t1_team'].eq(team_options) | filtered_hist_df['t2_team'].eq(team_options)]
         else:
-            filtered_df = df
+            filtered_hist_df = df.copy()
 
 
         if "All" not in week_options:
-            filtered_df = filtered_df[filtered_df['week'].isin(week_options)]
+            filtered_hist_df = filtered_hist_df[filtered_hist_df['week'].isin(week_options)]
 
         if "All" not in season_options:
-            filtered_df = filtered_df[filtered_df['season'].isin(season_options)]
+            filtered_hist_df = filtered_hist_df[filtered_hist_df['season'].isin(season_options)]
 
         if conf_options != "All":
-            filtered_df = filtered_df[filtered_df['t1_conference'].eq(conf_options) | filtered_df['t2_conference'].eq(conf_options)]             
+            filtered_hist_df = filtered_hist_df[filtered_hist_df['t1_conference'].eq(conf_options) | filtered_hist_df['t2_conference'].eq(conf_options)]             
         
 
 
-        filtered_df = filtered_df[
-            (filtered_df['cover_confidence'] >= cover_conf_lower) &
-            (filtered_df['cover_confidence'] <= cover_conf_upper)|
-            (filtered_df['cover_confidence'].isna())
+        filtered_hist_df = filtered_hist_df[
+            (filtered_hist_df['cover_confidence'] >= cover_conf_lower) &
+            (filtered_hist_df['cover_confidence'] <= cover_conf_upper)|
+            (filtered_hist_df['cover_confidence'].isna())
             ]
         
-        filtered_df = filtered_df[
-            (filtered_df['ml_value'] >= ml_value_lower) & 
-            (filtered_df['ml_value'] <= ml_value_upper) |
-            (filtered_df['ml_value'].isna())
+        filtered_hist_df = filtered_hist_df[
+            (filtered_hist_df['ml_value'] >= ml_value_lower) & 
+            (filtered_hist_df['ml_value'] <= ml_value_upper) |
+            (filtered_hist_df['ml_value'].isna())
         ]        
         
-        filtered_df = filtered_df[
-            (filtered_df['ou_confidence'] >= ou_conf_lower) &
-            (filtered_df['ou_confidence'] <= ou_conf_upper)|
-            (filtered_df['ou_confidence'].isna())
+        filtered_hist_df = filtered_hist_df[
+            (filtered_hist_df['ou_confidence'] >= ou_conf_lower) &
+            (filtered_hist_df['ou_confidence'] <= ou_conf_upper)|
+            (filtered_hist_df['ou_confidence'].isna())
             ]        
 
 
@@ -616,35 +622,35 @@ def historical_results_page():
         
 
 
-        filtered_df = filtered_df[
-            (filtered_df['t1_book_spread'] >= book_sp_lower) & 
-            (filtered_df['t1_book_spread'] <= book_sp_upper) |
-            (filtered_df['t1_book_spread'].isna())
+        filtered_hist_df = filtered_hist_df[
+            (filtered_hist_df['t1_book_spread'] >= book_sp_lower) & 
+            (filtered_hist_df['t1_book_spread'] <= book_sp_upper) |
+            (filtered_hist_df['t1_book_spread'].isna())
         ]
 
-        filtered_df = filtered_df[
-            (filtered_df['t1_ml_prob'] >= book_home_ml_prob_lower) & 
-            (filtered_df['t1_ml_prob'] <= book_home_ml_prob_upper) |
-            (filtered_df['t1_ml_prob'].isna())
+        filtered_hist_df = filtered_hist_df[
+            (filtered_hist_df['t1_ml_prob'] >= book_home_ml_prob_lower) & 
+            (filtered_hist_df['t1_ml_prob'] <= book_home_ml_prob_upper) |
+            (filtered_hist_df['t1_ml_prob'].isna())
         ]        
 
 
-        filtered_df = filtered_df[
-            (filtered_df['book_over_under'] >= book_tp_lower) & 
-            (filtered_df['book_over_under'] <= book_tp_upper) |
-            (filtered_df['book_over_under'].isna())
+        filtered_hist_df = filtered_hist_df[
+            (filtered_hist_df['book_over_under'] >= book_tp_lower) & 
+            (filtered_hist_df['book_over_under'] <= book_tp_upper) |
+            (filtered_hist_df['book_over_under'].isna())
         ]
         
     
             
         # Exclude rows with NAs if the user selects the option
         if exclude_na_ml:
-            filtered_df = filtered_df.dropna(subset=['ml_winnings'])
+            filtered_hist_df = filtered_hist_df.dropna(subset=['ml_winnings'])
             
 
         # Show the filtered data in Streamlit
         st.write("### Test Data")
-        st.dataframe(filtered_df)
+        st.dataframe(filtered_hist_df)
         
     
     
@@ -657,14 +663,14 @@ def historical_results_page():
             ### SPREAD
             
             # Calculate our return on investment
-            our_return_spread = filtered_df['spread_winnings'].sum(skipna=True) / filtered_df['spread_winnings'].count()
+            our_return_spread = filtered_hist_df['spread_winnings'].sum(skipna=True) / filtered_hist_df['spread_winnings'].count()
 
             # format it as a percentage and dollars ($100 bet)
             our_return_percentage_spread = f"{(our_return_spread * 100) - 100:.2f}%"  # If you want to show it as a percentage
             our_return_dollars_spread = f"{(100 * our_return_spread):.2f}"
             
             # Calculate bettor average return on investment
-            naive_return_spread = filtered_df['naive_spread_winnings'].sum(skipna=True) / filtered_df['naive_spread_winnings'].count()
+            naive_return_spread = filtered_hist_df['naive_spread_winnings'].sum(skipna=True) / filtered_hist_df['naive_spread_winnings'].count()
 
             # format it as a percentage and dollars ($100 bet)
             naive_return_percentage_spread = f"{(naive_return_spread * 100) - 100:.2f}%"  # If you want to show it as a percentage
@@ -725,7 +731,7 @@ def historical_results_page():
                     If they evenly split \$100 between the games, they would finish with <span><b>\${naive_return_dollars_spread}</b></span>, which is <span style="color:red"><b>${naive_over_ours_spread}</b></span> more than we made.
                 """, unsafe_allow_html=True)
                 
-            filtered_row_total_spread = filtered_df['spread_winnings'].count()
+            filtered_row_total_spread = filtered_hist_df['spread_winnings'].count()
             
             st.markdown(f"""
                 <span><i>using a sample of {filtered_row_total_spread} games for spread calculations</span>
@@ -742,14 +748,14 @@ def historical_results_page():
            ### MONEYLINE
             
             # our return on investment
-            our_return_moneyline = filtered_df['ml_winnings'].sum(skipna=True) / filtered_df['ml_winnings'].count()
+            our_return_moneyline = filtered_hist_df['ml_winnings'].sum(skipna=True) / filtered_hist_df['ml_winnings'].count()
 
             # format it as a percentage and dollars ($100 bet)
             our_return_percentage_moneyline = f"{(our_return_moneyline * 100) - 100:.2f}%"  # If you want to show it as a percentage
             our_return_dollars_moneyline = f"{(100 * our_return_moneyline):.2f}"
             
             # average return on investment
-            naive_return_moneyline = filtered_df['naive_ml_winnings'].sum(skipna=True) / filtered_df['naive_ml_winnings'].count()
+            naive_return_moneyline = filtered_hist_df['naive_ml_winnings'].sum(skipna=True) / filtered_hist_df['naive_ml_winnings'].count()
 
             # format it as a percentage and dollars ($100 bet)
             naive_return_percentage_moneyline = f"{(naive_return_moneyline * 100) - 100:.2f}%"  # If you want to show it as a percentage
@@ -812,7 +818,7 @@ def historical_results_page():
                 """, unsafe_allow_html=True)
                 
             
-            filtered_row_total_moneyline = filtered_df['ml_winnings'].count()
+            filtered_row_total_moneyline = filtered_hist_df['ml_winnings'].count()
             
             st.markdown(f"""
                 <span><i>using a sample of {filtered_row_total_moneyline} games for moneyline calculations</span>
@@ -828,14 +834,14 @@ def historical_results_page():
            ### OVER/UNDER
             
             # our return on investment
-            our_return_ou = filtered_df['ou_winnings'].sum(skipna=True) / filtered_df['ou_winnings'].count()
+            our_return_ou = filtered_hist_df['ou_winnings'].sum(skipna=True) / filtered_hist_df['ou_winnings'].count()
 
             # format it as a percentage and dollars ($100 bet)
             our_return_percentage_ou = f"{(our_return_ou * 100) - 100:.2f}%"  # If you want to show it as a percentage
             our_return_dollars_ou = f"{(100 * our_return_ou):.2f}"
             
             # average return on investment
-            naive_return_ou = filtered_df['naive_ou_winnings'].sum(skipna=True) / filtered_df['naive_ou_winnings'].count()
+            naive_return_ou = filtered_hist_df['naive_ou_winnings'].sum(skipna=True) / filtered_hist_df['naive_ou_winnings'].count()
 
             # format it as a percentage and dollars ($100 bet)
             naive_return_percentage_ou = f"{(naive_return_ou * 100) - 100:.2f}%"  # If you want to show it as a percentage
@@ -898,7 +904,7 @@ def historical_results_page():
                 """, unsafe_allow_html=True)
                 
             
-            filtered_row_total_ou = filtered_df['ou_winnings'].count()
+            filtered_row_total_ou = filtered_hist_df['ou_winnings'].count()
             
             st.markdown(f"""
                 <span><i>using a sample of {filtered_row_total_ou} games for over/under calculations</span>
@@ -939,12 +945,17 @@ def playoff_page():
   
   with col1:
     
+
+
+      playoff_teams = []
+      for i in poll_rankings["school"]:
+            playoff_teams.append(i)
       # Create select boxes with specific default values
-      default_values = ["Oregon", "Georgia", "Boise State", "Arizona State", "Texas", "Penn State", 
-                      "Notre Dame", "Ohio State", "Tennessee", "Illinois", "SMU", "Clemson"]
+      #default_values = ["Oregon", "Georgia", "Boise State", "Arizona State", "Texas", "Penn State", 
+      #               "Notre Dame", "Ohio State", "Tennessee", "Illinois", "SMU", "Clemson"]
 
       seeds = []
-      for value in default_values:
+      for value in playoff_teams:
           
         try:
             # Find the index of the default value
@@ -1778,7 +1789,7 @@ def power_rankings_page():
         theor_agg_filt = theor_agg_filt[theor_agg_filt['Conf'].isin(conf_options)]
 
     # Show the filtered data in Streamlit
-    st.table(theor_agg_filt)
+    st.dataframe(theor_agg_filt)
 
 
 
@@ -1850,6 +1861,10 @@ def this_week_page():
             return
         try:
             st.session_state.new_spread_val = float(raw)
+            if (st.session_state.new_spread_val > old_spread_upper or st.session_state.new_spread_val < old_spread_lower):
+                            st.session_state.new_spread_val = None
+                            st.session_state.new_spread_error = "Please enter a more realistic value"
+                            return
             st.session_state.new_spread_error = ""
         except ValueError:
             st.session_state.new_spread_val = None
@@ -1903,6 +1918,10 @@ def this_week_page():
             return
         try:
             st.session_state.new_over_val = float(raw)
+            if (st.session_state.new_over_val > old_over_upper or st.session_state.new_over_val < old_over_lower):
+                            st.session_state.new_over_val = None
+                            st.session_state.new_over_error = "Please enter a more realistic value"
+                            return            
             st.session_state.new_over_error = ""
         except ValueError:
             st.session_state.new_over_val = None
@@ -1937,11 +1956,14 @@ def this_week_page():
     # Streamlit App
     st.title("This Week's Picks")
 
-    st.write("Here are our picks for the week. You can toggle between the data frame view or one game at a time.")
+    st.write("Here are our picks for the week. You can toggle between the data frame view of all games or the more in-depth view of one game at a time.")
 
     st.write("'Value' is a way to sort our predicted best value picks. Spread Value is the difference between our predicted point" \
     " differential sportsbooks' (spread*-1). ML Value is the percentage difference between our predicted win probability for the team with value" \
     " and sportsbooks' implied wp (converted from ML). Over/Under Value is the difference in our predicted total points and sportsbooks'.")
+
+    st.write("PROFITABILITY NOTE: the spread model is significantly profitable when the 'Cover Confidence' is at 4%. The moneyline model is profitable regardless. The O/U model is not profitable.")
+
 
     st.write("To look at more information for Spread, ML, or O/U, select the 'Bet Type' filter. To sort by one of those values, select" \
     " that filter.")
@@ -2093,6 +2115,13 @@ def this_week_page():
             )    
 
             filtered_df = merged_predictions.loc[merged_predictions["matchup"]==matchup_options]  
+            old_spread_val = filtered_df.iloc[0]["Book Home Spread"]
+            old_spread_upper = old_spread_val+4
+            old_spread_lower = old_spread_val-4
+            old_over_val = filtered_df.iloc[0]["Book O/U"]
+            old_over_upper = old_over_val+5
+            old_over_lower = old_over_val-5   
+
             
 
             if st.session_state.new_spread_val is not None and st.session_state.new_over_val is None:

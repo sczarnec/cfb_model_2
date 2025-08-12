@@ -109,6 +109,12 @@ model_func = function(oc_var, data, yr_length, real_yr, real_wk, initial_yr, ini
       if ("t2_book_spread" %in% var_list_final){
         var_list_final =  var_list_final[-c(grep("t2_book_spread", var_list_final))]
       }
+      if (!"t1_book_spread" %in% var_list_final & oc_var == "actual_t1_cover"){
+        var_list_final =  c(var_list_final, "t1_book_spread")
+      }
+      if (!"book_over_under" %in% var_list_final & oc_var == "actual_over"){
+        var_list_final =  c(var_list_final, "book_over_under")
+      }
       train = train %>% select(var_list_final, oc_var)
       num_predictors = length(var_list_final)
       

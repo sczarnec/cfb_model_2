@@ -20,6 +20,13 @@ library(zoo)
 ```
 
 
+```{r}
+# You can install using the pacman package using the following code:
+if (!requireNamespace('pacman', quietly = TRUE)){
+  install.packages('pacman')
+}
+pacman::p_load_current_gh("sportsdataverse/cfbfastR", dependencies = TRUE, update = TRUE)
+```
 
 
 
@@ -30,8 +37,6 @@ library(zoo)
 
 current_season = 2024
 current_week = 23
-
-
 
 
 
@@ -91,7 +96,6 @@ game_info = game_info_orig %>%
 
 # reference df for weeks
 week_id = game_info %>% select(game_id, week) %>% rename(new_week = week)
-
 
 
 
@@ -190,7 +194,7 @@ cfb_data = rbind(cfb_data, new_rows)
 
 
 
-
+cfbd_betting_lines(year = 2015, away_team = "Notre Dame")
 
 
 ### LOAD IN BETTING DATA ###

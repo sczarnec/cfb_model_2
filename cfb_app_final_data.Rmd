@@ -439,11 +439,11 @@ write.csv(pred_dat_final_op, "pred_dat_final_op_21to24.csv")
 
 ```{r}
 
-# pred_dat_final_cp = read.csv("pred_dat_final_cp_21to24.csv")[,-1]
-# pred_dat_final_op = read.csv("pred_dat_final_op_21to24.csv")[,-1]
+pred_dat_final_cp = read.csv("pred_dat_final_cp_21to24.csv")[,-1]
+pred_dat_final_op = read.csv("pred_dat_final_op_21to24.csv")[,-1]
 # pred_dat_final_wp = read.csv("pred_dat_final_wp_21to24.csv")[,-1]
-pred_dat_final_pd = read.csv("pred_dat_final_t1cover2.csv")[,-1]
-pred_dat_final_tp = read.csv("pred_dat_final_over2.csv")[,-1]
+#pred_dat_final_pd = read.csv("pred_dat_final_t1cover2.csv")[,-1]
+#pred_dat_final_op = read.csv("pred_dat_final_over2.csv")[,-1]
 pred_dat_final_wp = read.csv("pred_dat_final_t1wp2.csv")[,-1]
 
 
@@ -640,7 +640,7 @@ write.csv(winnings_calc, "final_prediction_df_21to24.csv")
 # 
 # 
 # # save final df and these specific predictions in case screw up
-#write.csv(winnings_calc_fin, "final_prediction_df.csv")
+write.csv(winnings_calc, "maybe_final_preds.csv")
 # write.csv(winnings_calc, paste0("winnings_calc_saved_dfs/prediction", mark_min_season, mark_min_week, "to", mark_max_season, mark_max_week, ".csv"))
 
 
