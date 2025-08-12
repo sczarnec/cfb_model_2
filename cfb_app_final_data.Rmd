@@ -669,7 +669,7 @@ sum(winnings_calc$naive_ou_winnings) / length(winnings_calc$ou_winnings)
 
 <br>
 
-## Load in Team Logos
+## Load in Team Logos and Current Rankings
 
 
 ```{r}
@@ -685,6 +685,14 @@ team_info = team_info %>%
 #write.csv(team_info, "team_info.csv")
 team_info = read.csv("team_info.csv")[,-1]
 ```
+
+```{r}
+
+current_rankings = (cfbd_rankings(year=current_season, week = 7) %>% filter(poll == "AP Top 25") %>% select(school, rank))[1:12,]
+write.csv(current_rankings, "this_week_ranks.csv")
+
+```
+
 
 
 <br>
