@@ -24,7 +24,7 @@ is_mobile = (width is not None and width < 768) or ("Mobi" in ua)
 ## GONNA HAVE TO CHANGE A LOT OF THESE ONCE AUTOMATED
 
 # Read in historical betting data
-historical_data = pd.read_csv("maybe_final_preds.csv", encoding="utf-8", sep=",", header=0)
+historical_data = pd.read_csv("test_thisorig.csv", encoding="utf-8", sep=",", header=0)
 
 
 # load theoretical data
@@ -368,9 +368,9 @@ st.set_page_config(layout="wide")
 
 
 ### WELCOME PAGE
-def welcome_page():
+def about_page():
   
-  st.title('Czar College Football')
+  st.title('About Czar College Football')
   
   st.markdown(
           """
@@ -379,7 +379,7 @@ def welcome_page():
               font-size: 20px;
           }
           </style>
-          <div class="custom-font">Welcome! This site is built around the use of an XGBoost model to predict
+          <div class="custom-font">This site is built around the use of an XGBoost model to predict
           cover probability, win probability, and over probability for FBS College Football games. 
           The goal is to predict future outcomes for fun and try to beat the accuracy of sportsbook models.</div>
           """,
@@ -424,18 +424,7 @@ def welcome_page():
   st.write("  ")
   st.write("  ")
       
-  st.markdown(
-          """
-          <style>
-          .custom-font {
-              font-size: 24px;
-          }
-          </style>
-          <div class="custom-font">Check out the Navigation menu on the top left to look at how our
-          model predicts games (real and theoretical) or how it has performed historically.</div>
-          """,
-          unsafe_allow_html=True
-      )
+
   
    
   
@@ -448,10 +437,9 @@ def historical_results_page():
     
     st.title('Model Performance on Historical Test Data')
 
-    st.write("This is how well our model would perform on previous games over the last few years versus how well a random 50/50 guesser would perform. Only test data (games not included in model training) are included here.")
-    st.write("These returns are assuming you bet the same units for hundreds of games. If you use the model on one game, the return is either gonna be 0 or ~95%. If you bet on 100, it will look more like this projected reutrn. It's a sample size game: it won't get every game right but will be profitable over time.")
-    st.write("As a note: the spread model is significantly profitable when the 'Cover Confidence' is at 4%. The moneyline model is profitable regardless. The O/U model is not profitable.")
-    st.write("More notes/considerations are at the bottom of this page")
+    st.write("This is how well our model would perform on previous games over the last few years versus how well a random 50/50 guesser would perform.")
+
+
 
     df = historical_data.copy()
 
@@ -922,6 +910,8 @@ def historical_results_page():
 
     st.write(" ")
     st.write(" ")
+    st.write("These returns are assuming you bet the same units for hundreds of games. If you use the model on one game, the return is either gonna be 0 or ~95%. If you bet on 100, it will look more like this projected reutrn. It's a sample size game: it won't get every game right but will be profitable over time.")
+    st.write("Based on 2021-24 backtesting: the spread model is significantly profitable and increases profitability as confidence increases. The moneyline model is significantly profitable and increases profitability as value increases. The O/U model is not profitable.")
     st.write("'Confidence' represents (our predicted probability - 50%). For example, if a team has a 55% chance to cover, their cover confidence is 5%. Similarly, ML Value is a direct comparison of our predicted win " \
     "probability vs the book's implicit win probability from ML. For example, if the book's win probability is 55% and ours is 60%, that's a 5% value.")
     st.write("As a note, some moneyline values for games are incomplete in the data source. These appear as NAs. Others may be NA due to a lack of prior data in the season for one of the teams.")
@@ -1676,6 +1666,8 @@ def game_predictor_page():
   
   st.write("Pick a combination of teams and see what the model predicts if they played today!")
 
+  st.write(" ")
+
   # Create columns for layout
   col1, col2 = st.columns([1,2])
     
@@ -1963,21 +1955,13 @@ def this_week_page():
   
 
     # Streamlit App
-    st.title("This Week's Picks")
+    st.title(f"Czar's Week {this_week} Picks")
 
-    st.write("Here are our picks for the week. You can toggle between the data frame view of all games or the more in-depth view of one game at a time.")
+    st.write("Welcome! Here are our picks for the week. You can toggle between the data frame view of all games or the more in-depth view of one game at a time.")
 
-    st.write("'Value' is a way to sort our predicted best value picks. Spread Value is the difference between our predicted point" \
-    " differential sportsbooks' (spread*-1). ML Value is the percentage difference between our predicted win probability for the team with value" \
-    " and sportsbooks' implied wp (converted from ML). Over/Under Value is the difference in our predicted total points and sportsbooks'.")
+    st.write("PROFITABILITY NOTE: the spread and moneyline models are significantly profitable. The O/U model is not profitable.")
 
-    st.write("PROFITABILITY NOTE: the spread model is significantly profitable when the 'Cover Confidence' is at 4%. The moneyline model is profitable regardless. The O/U model is not profitable.")
-
-
-    st.write("To look at more information for Spread, ML, or O/U, select the 'Bet Type' filter. To sort by one of those values, select" \
-    " that filter.")
-
-    st.write("Double check the lines listed for each game. If your book is different than what's shown, you can input your own customized lines in the single-game view")  
+    st.write("More notes on how to use this page to bet are at the bottom")
 
     st.write(" ")  
 
@@ -1986,11 +1970,10 @@ def this_week_page():
         ["All Games", "One Game"]
     )
 
-    st.markdown(f"""
-    <div style="font-size:35px; font-weight:bold; text-align:left;">
-        <br> <span style="color: orange;"> Week {this_week} </span>
-    </div>
-    """, unsafe_allow_html=True) 
+    st.write(" ")
+    st.write(" ")
+
+
 
     
 
@@ -2005,6 +1988,20 @@ def this_week_page():
 
 
             with col1:
+
+
+                st.markdown(
+                        """
+                        <style>
+                        .custom-font {
+                            font-size: 30px; font-weight:bold
+                        }
+                        </style>
+                        <div class="custom-font">Filters</div>
+                        """,
+                        unsafe_allow_html=True)
+
+                st.write(" ")
 
 
 
@@ -2733,10 +2730,10 @@ def this_week_page():
                             
                             st.write("")
 
-                            st.markdown("<div style='display: flex; justify-content: center;'><img src='" + filtered_df.iloc[0]["away_logo"] + "' width='150'></div>", unsafe_allow_html=True)
+                            st.markdown("<div style='display: flex; justify-content: left;'><img src='" + filtered_df.iloc[0]["away_logo"] + "' width='150'></div>", unsafe_allow_html=True)
                     
                             st.markdown(f"""
-                                        <div style="font-size:35px; font-weight:bold; color:{filtered_df.iloc[0]["away_color"]}; text-align:center;">
+                                        <div style="font-size:35px; font-weight:bold; color:{filtered_df.iloc[0]["away_color"]}; text-align:left;">
                                             {filtered_df.iloc[0]["Away"]}
                                         </div>
                                     """, unsafe_allow_html=True)
@@ -3067,10 +3064,10 @@ def this_week_page():
 
                         st.write("") 
 
-                        st.markdown("<div style='display: flex; justify-content: center;'><img src='" + filtered_df.iloc[0]["home_logo"] + "' width='150'></div>", unsafe_allow_html=True)
+                        st.markdown("<div style='display: flex; justify-content: right;'><img src='" + filtered_df.iloc[0]["home_logo"] + "' width='150'></div>", unsafe_allow_html=True)
                                             
                         st.markdown(f"""
-                                    <div style="font-size:35px; font-weight:bold; color:{filtered_df.iloc[0]["home_color"]}; text-align:center;">
+                                    <div style="font-size:35px; font-weight:bold; color:{filtered_df.iloc[0]["home_color"]}; text-align:right;">
                                         {filtered_df.iloc[0]["Home"]}
                                     </div>
                                 """, unsafe_allow_html=True)       
@@ -3173,7 +3170,21 @@ def this_week_page():
                                         <div style="font-size:20px; color: red; font-weight:bold; text-align:right;">
                                             {filtered_df.iloc[0]["ML Losing Value"]}% - To Hit Value 
                                         </div>
-                                    """, unsafe_allow_html=True)            
+                                    """, unsafe_allow_html=True) 
+
+    st.write(" ")      
+    st.write(" ")                      
+
+    st.write("'Value' is a way to sort our predicted best value picks. Spread Value is the difference between our predicted point" \
+    " differential sportsbooks' (spread*-1). ML Value is the percentage difference between our predicted win probability for the team with value" \
+    " and sportsbooks' implied wp (converted from ML). Over/Under Value is the difference in our predicted total points and sportsbooks'.")
+
+    st.write("To look at more information for Spread, ML, or O/U, select the 'Bet Type' filter. To sort by one of those values, select" \
+    " that filter.")
+
+    st.write("Double check the lines listed for each game. If your book is different than what's shown, you can input your own customized lines in the single-game view")    
+
+    st.write("For more information on model accuracy, navigate to the 'Betting Accuracy' page")          
 
 
         
@@ -3187,14 +3198,14 @@ def this_week_page():
     
 # Sidebar navigation
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ("Home", "Betting Accuracy", "This Week's Picks", "The Czar Poll", "The Playoff", "Game Predictor"))
+page = st.sidebar.radio("Go to", ("This Week's Picks", "The Czar Poll", "The Playoff", "Game Predictor", "Betting Accuracy", "About"))
 
 
 
 
 # Display the selected page
-if page == "Home":
-    welcome_page()
+if page == "About":
+    about_page()
 elif page == "Betting Accuracy":
     historical_results_page()
 elif page == "Game Predictor":

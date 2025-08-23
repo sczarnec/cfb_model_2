@@ -40,12 +40,9 @@ library(zoo)
 ### IDENTIFY CURRENT SEASON ###
 
 current_season = 2024
-current_week = 23
+current_week = 7
 
 
-
-
-#full_df = cfbd_game_info(2020, season_type = "regular")
 
 
 ### LOAD IN GBG Data ###
@@ -78,7 +75,7 @@ load_gi_data_func = function(year_start, year_end) {
 
 
 # load in gbg data
-game_info_orig = load_gi_data_func(2015, 2024) # original df
+game_info_orig = load_gi_data_func(current_season, current_season) # original df
 game_info = game_info_orig %>% 
   # change weeks for postseason
   mutate(week = ifelse(season_type == "regular", week, ifelse(
@@ -95,7 +92,10 @@ game_info = game_info_orig %>%
          )
          )
   ))) %>% 
-  mutate(week = ifelse(season_type == "postseason" & is.na(week), 20, week))
+  mutate(week = ifelse(season_type == "postseason" & is.na(week), 20, week)) %>% 
+  rename(home_division = home_classification,
+         away_division = away_classification) %>% 
+  filter(week <= current_week)
 
 
 # reference df for weeks
@@ -111,15 +111,14 @@ week_id = game_info %>% select(game_id, week) %>% rename(new_week = week)
 
 
 
-
 ### LOAD IN PBP DATA ###
 
 
 # load cfb pbp data 
-cfb_data_reg_orig = load_cfb_pbp(seasons = c(2015:2024)) 
+cfb_data_reg_orig = load_cfb_pbp(seasons = c(current_season:current_season)) 
 cfb_data_reg = cfb_data_reg_orig
 
-load_cfb
+
 
 # create postseason data function
 load_post_data_func = function(year_start, year_end) {
@@ -139,26 +138,38 @@ load_post_data_func = function(year_start, year_end) {
   return(full_df)
 }
 
-# load in postseason pbp data
-cfb_data_post_orig = load_post_data_func(2015, 2024)
-cfb_data_post = cfb_data_post_orig %>% 
-  rename(week = wk,
-         year = season)
-cfb_data_post = left_join(cfb_data_post, week_id, by = "game_id")
-cfb_data_post$week = cfb_data_post$new_week
-cfb_data_post = cfb_data_post %>% select(-c(new_week))
 
 
+### bug in cfbfastr package for postseason api call, ignore for now
 
-# join regular and postseason data
-common_cols <- intersect(names(cfb_data_reg_orig), names(cfb_data_post))
-cfb_data_post <- cfb_data_post %>% select(all_of(common_cols))
-cfb_data_post$id_play = as.integer(cfb_data_post$id_play)
-cfb_data_post$half = as.integer(cfb_data_post$half)
-cfb_data_post$down_end = as.integer(cfb_data_post$down_end)
-cfb_data_post$ppa = as.integer(cfb_data_post$ppa)
-cfb_data_post$id_drive = as.integer(cfb_data_post$id_drive)
-cfb_data <- bind_rows(cfb_data_reg, cfb_data_post)
+# if (current_week>18){
+# 
+#   # load in postseason pbp data
+#   cfb_data_post_orig = load_post_data_func(current_season, current_season)
+#   cfb_data_post = cfb_data_post_orig %>% 
+#     rename(week = wk,
+#            year = season)
+#   cfb_data_post = left_join(cfb_data_post, week_id, by = "game_id")
+#   cfb_data_post$week = cfb_data_post$new_week
+#   cfb_data_post = cfb_data_post %>% select(-c(new_week))
+#   
+#   
+#   
+#   # join regular and postseason data
+#   common_cols <- intersect(names(cfb_data_reg_orig), names(cfb_data_post))
+#   cfb_data_post <- cfb_data_post %>% select(all_of(common_cols))
+#   cfb_data_post$id_play = as.integer(cfb_data_post$id_play)
+#   cfb_data_post$half = as.integer(cfb_data_post$half)
+#   cfb_data_post$down_end = as.integer(cfb_data_post$down_end)
+#   cfb_data_post$ppa = as.integer(cfb_data_post$ppa)
+#   cfb_data_post$id_drive = as.integer(cfb_data_post$id_drive)
+#   cfb_data <- bind_rows(cfb_data_reg, cfb_data_post)
+#   
+# } else{
+#   cfb_data = cfb_data_reg
+# }
+
+cfb_data = cfb_data_reg
 
 
 # filter out meaningless rows, make team names the same, mutate play_count to make later calcs easier
@@ -172,7 +183,8 @@ cfb_data = cfb_data %>%
                             'Connecticut' = 'UConn',
                             'Sam Houston State' = 'Sam Houston',
                             'Louisiana Monroe' = 'UL Monroe')) %>% 
-  mutate(play_count = 1) 
+  mutate(play_count = 1) %>% 
+  filter(week <= current_week-1)
 
 
 
@@ -193,12 +205,6 @@ cfb_data = rbind(cfb_data, new_rows)
 
 
 
-
-
-
-
-
-cfbd_betting_lines(year = 2015, away_team = "Notre Dame")
 
 
 ### LOAD IN BETTING DATA ###
@@ -256,12 +262,15 @@ load_bet_data_func = function(year_start, year_end, joining_data){
             df$spread = as.numeric(df$spread)
             full_df = bind_rows(full_df, df)
             
-            df = cfbd_betting_lines(year = szn, season_type = "postseason")
-            df$over_under = as.numeric(df$over_under)
-            df$spread_open = as.numeric(df$spread_open)
-            df$over_under_open = as.numeric(df$over_under_open)
-            df$spread = as.numeric(df$spread)
-            full_df = bind_rows(full_df, df)
+            if (current_week>19){
+            
+              df = cfbd_betting_lines(year = szn, season_type = "postseason")
+              df$over_under = as.numeric(df$over_under)
+              df$spread_open = as.numeric(df$spread_open)
+              df$over_under_open = as.numeric(df$over_under_open)
+              df$spread = as.numeric(df$spread)
+              full_df = bind_rows(full_df, df)
+            }
             
             
         }
@@ -276,8 +285,8 @@ load_bet_data_func = function(year_start, year_end, joining_data){
 
 
 # load in betting data
-betting_lines_orig = load_bet_data_func(2015, 2024, game_info)
-betting_lines = betting_lines_orig
+betting_lines_orig = load_bet_data_func(current_season, current_season, game_info)
+betting_lines = betting_lines_orig %>% filter(week<=current_week)
 
 
 
@@ -312,7 +321,7 @@ load_talent_data_func = function(year_start, year_end) {
 
 
 # team talent data load
-talent_data_orig = load_talent_data_func(2015, 2024)
+talent_data_orig = load_talent_data_func(current_season, current_season)
 
 
 
@@ -327,30 +336,30 @@ talent_data_orig = load_talent_data_func(2015, 2024)
 
 
 
-# function to load weather data
-load_weather_data_func = function(year_start, year_end) {
-  
-  # loop to load data
-  for (szn in c(year_start:year_end)){
-    # this one creates the df for the first year in the loop
-    if (szn == year_start){
-      full_df = cfbd_game_weather(year = szn, season_type = "regular")
-      df = cfbd_game_weather(year = szn, season_type = "postseason")
-      full_df = bind_rows(full_df, df)
-    # this one binds other dfs to full_df
-    } else{
-        df = cfbd_game_weather(year = szn, season_type = "regular")
-        full_df = bind_rows(full_df, df)
-        df = cfbd_game_weather(year = szn, season_type = "postseason")
-        full_df = bind_rows(full_df, df)
-        }
-  }
-  # return one df with all years of data
-  return(full_df)
-}
-
-# weather data load
-weather_data_orig = load_weather_data_func(2015, 2024)
+# # function to load weather data
+# load_weather_data_func = function(year_start, year_end) {
+#   
+#   # loop to load data
+#   for (szn in c(year_start:year_end)){
+#     # this one creates the df for the first year in the loop
+#     if (szn == year_start){
+#       full_df = cfbd_game_weather(year = szn, season_type = "regular")
+#       df = cfbd_game_weather(year = szn, season_type = "postseason")
+#       full_df = bind_rows(full_df, df)
+#     # this one binds other dfs to full_df
+#     } else{
+#         df = cfbd_game_weather(year = szn, season_type = "regular")
+#         full_df = bind_rows(full_df, df)
+#         df = cfbd_game_weather(year = szn, season_type = "postseason")
+#         full_df = bind_rows(full_df, df)
+#         }
+#   }
+#   # return one df with all years of data
+#   return(full_df)
+# }
+# 
+# # weather data load
+# weather_data_orig = load_weather_data_func(current_season, current_season)
 
 
 
@@ -387,7 +396,7 @@ load_ranking_data_func = function(year_start, year_end) {
 
 
 # load ranking data
-ranking_data_orig = load_ranking_data_func(2014,2024)
+ranking_data_orig = load_ranking_data_func(current_season,current_season) %>% filter(week<=current_week)
 
 
 
@@ -395,8 +404,7 @@ ranking_data_orig = load_ranking_data_func(2014,2024)
 
 
 
-
-
+# not including stats data for now
 
 
 
@@ -404,106 +412,108 @@ ranking_data_orig = load_ranking_data_func(2014,2024)
 
 
 
-weeks_in_seasons = game_info_orig %>% 
-  filter(completed, season_type == "regular", home_division == "fbs" | away_division == "fbs") %>%
-  group_by(season) %>% 
-  summarize(max_week = max(week))
+# weeks_in_seasons = game_info_orig %>% 
+#   filter(completed, season_type == "regular", away_classification == "fbs" | away_classification == "fbs") %>%
+#   group_by(season) %>% 
+#   summarize(max_week = max(week)) %>% 
+#   mutate(max_week = ifelse(max_week>15, 15, max_week))
 
 
-load_stats_data_func = function(start_yr, end_yr){
+# load_stats_data_func = function(start_yr, end_yr){
+# 
+#       for (yr in c(start_yr:end_yr)){
+#         
+#         print(yr)
+#         
+#         weeks_this_reg_szn = (weeks_in_seasons %>% filter(season == yr))[[2]]
+#         
+#       
+#         for (end_wk in c(1:weeks_this_reg_szn)){
+#           
+#           print(end_wk)
+#           
+#             for (range in c(1,3,20)){
+#               
+#               
+#                   start_wk = ifelse(end_wk + 1 - range < 1, 1, end_wk + 1 - range)
+#       
+#                   data_pulled = cfbd_stats_season_advanced(
+#                     yr,
+#                     excl_garbage_time = TRUE,
+#                     start_week = start_wk,
+#                     end_week = end_wk
+#                   )
+#                   
+#                   data_mut = data_pulled %>% 
+#                     select(-c(conference))
+#                   
+#                   
+#                   colnames(data_mut)[3:length(colnames(data_mut))] <- paste0("rol_", colnames(data_mut)[3:length(colnames(data_mut))], "_l", range)
+#                   
+#                   
+#                   
+#                   if(range == 1){
+#                     
+#                     data_mut = data_mut %>% mutate(end_week = end_wk)
+#                     week_df = data_mut
+#                     
+#                   } else{
+#                     
+#                     data_mut = data_mut %>% select(-c(season))
+#                     week_df = left_join(week_df, data_mut, by = "team")
+#                     
+#                   }
+#          
+#                   
+#             }
+#           
+#             
+#             if(end_wk == 1){
+#               year_df = week_df
+#             } else{
+#               year_df = bind_rows(week_df, year_df)
+#             }
+#           
+#           
+#           
+#         }
+#         
+#         
+#         if(yr == start_yr){
+#           final_df = year_df
+#         } else{
+#           final_df = bind_rows(year_df, final_df)
+#         }
+#         
+#         
+#       }
+#       
+#    return(final_df)
+# 
+# }
+# 
+# 
+# 
+# 
+# stat_data_orig = load_stats_data_func(current_season, current_season)
+# 
+# 
+# 
+# 
+# stat_data = stat_data_orig %>% 
+#   mutate(join_wk = end_week + 1) %>% 
+#   select(-c(end_week))
 
-      for (yr in c(start_yr:end_yr)){
-        
-        print(yr)
-        
-        weeks_this_reg_szn = (weeks_in_seasons %>% filter(season == yr))[[2]]
-        
-      
-        for (end_wk in c(1:weeks_this_reg_szn)){
-          
-          print(end_wk)
-          
-            for (range in c(1,3,20)){
-              
-              
-                  start_wk = ifelse(end_wk + 1 - range < 1, 1, end_wk + 1 - range)
-      
-                  data_pulled = cfbd_stats_season_advanced(
-                    yr,
-                    excl_garbage_time = TRUE,
-                    start_week = start_wk,
-                    end_week = end_wk
-                  )
-                  
-                  data_mut = data_pulled %>% 
-                    select(-c(conference))
-                  
-                  
-                  colnames(data_mut)[3:length(colnames(data_mut))] <- paste0("rol_", colnames(data_mut)[3:length(colnames(data_mut))], "_l", range)
-                  
-                  
-                  
-                  if(range == 1){
-                    
-                    data_mut = data_mut %>% mutate(end_week = end_wk)
-                    week_df = data_mut
-                    
-                  } else{
-                    
-                    data_mut = data_mut %>% select(-c(season))
-                    week_df = left_join(week_df, data_mut, by = "team")
-                    
-                  }
-         
-                  
-            }
-          
-            
-            if(end_wk == 1){
-              year_df = week_df
-            } else{
-              year_df = bind_rows(week_df, year_df)
-            }
-          
-          
-          
-        }
-        
-        
-        if(yr == start_yr){
-          final_df = year_df
-        } else{
-          final_df = bind_rows(year_df, final_df)
-        }
-        
-        
-      }
-      
-   return(final_df)
-
-}
-
-
-
-
-stat_data_orig = load_stats_data_func(2015, 2024)
-
-
-
-stat_data = stat_data_orig %>% 
-  mutate(join_wk = end_week + 1) %>% 
-  select(-c(end_week))
-
-stat_data = stat_data %>% 
-  select(-c(grep("rol_off_plays", names(stat_data)),
-            grep("rol_def_plays", names(stat_data)),
-            grep("rol_off_drives", names(stat_data)),
-            grep("rol_def_drives", names(stat_data)),
-            grep("line_yds_total", names(stat_data)),
-            grep("lvl_yds_total", names(stat_data)),
-            grep("field_yds_total", names(stat_data)),
-            grep("total_opportunities", names(stat_data)),
-            grep("total_ppa", names(stat_data))))
+# stat_data = stat_data %>% 
+#   select(-c(grep("rol_off_plays", names(stat_data)),
+#             grep("rol_def_plays", names(stat_data)),
+#             grep("rol_off_drives", names(stat_data)),
+#             grep("rol_def_drives", names(stat_data)),
+#             grep("line_yds_total", names(stat_data)),
+#             grep("lvl_yds_total", names(stat_data)),
+#             grep("field_yds_total", names(stat_data)),
+#             grep("total_opportunities", names(stat_data)),
+#             grep("total_ppa", names(stat_data))))
 
 
 
@@ -1228,8 +1238,8 @@ joined_metrics = left_join(joined_metrics, rolling_pass_orig_yr, by = c("team", 
 
 
 # custom priority list for betting lines
-provider_sort = c("consensus", "DraftKings", "Caesars", "Caesars (Pennsylvania)", 
-                  "Caesars Sportsbook (Colorado)", "William Hill (New Jersey)", "ESPN Bet", 
+provider_sort = c("consensus", "DraftKings", "ESPN Bet", "Caesars", "Caesars (Pennsylvania)", 
+                  "Caesars Sportsbook (Colorado)", "William Hill (New Jersey)", #moved ESPN Bet up from here for 2025 on
                   "numberfire", "teamrankings", "Bovada", "SugarHouse")
 
 
@@ -1265,12 +1275,12 @@ talent_data = talent_data_orig %>%
 
 # home df
 talent_data_home = talent_data %>% 
-  rename(home_team = school,
+  rename(home_team = team,
          home_talent = talent)
 
 # away df
 talent_data_away = talent_data %>% 
-  rename(away_team = school,
+  rename(away_team = team,
          away_talent = talent)
 
 
@@ -1364,23 +1374,23 @@ game_info_rank = game_info_rank %>%
 
 ## JOIN WEATHER DATA ##
 
-
-# select necessary cols, change if indoor, create categories for rain (for easier future predictions)
-weather_data = weather_data_orig %>% 
-  select(game_id, game_indoors, temperature, humidity, precipitation, wind_speed) %>% 
-  mutate(temperature = ifelse(game_indoors, 70, temperature)) %>% 
-  mutate(humidity = ifelse(game_indoors, 30, humidity)) %>% 
-  mutate(precipitation = ifelse(game_indoors, 0, precipitation)) %>% 
-  mutate(wind_speed = ifelse(game_indoors, 0, wind_speed)) %>% 
-  mutate(precipitation_code = ifelse(precipitation > .035, "heavy_rain", ifelse(
-                                     precipitation > .01, "moderate_rain", ifelse(
-                                     precipitation > .00, "light_rain", "no_rain"
-                                     )))) %>% 
-  select(-c(precipitation, game_indoors))
-
-
-# join data to GbG
-game_info_weather = left_join(game_info_rank, weather_data, by = "game_id")
+# 
+# # select necessary cols, change if indoor, create categories for rain (for easier future predictions)
+# weather_data = weather_data_orig %>% 
+#   select(game_id, game_indoors, temperature, humidity, precipitation, wind_speed) %>% 
+#   mutate(temperature = ifelse(game_indoors, 70, temperature)) %>% 
+#   mutate(humidity = ifelse(game_indoors, 30, humidity)) %>% 
+#   mutate(precipitation = ifelse(game_indoors, 0, precipitation)) %>% 
+#   mutate(wind_speed = ifelse(game_indoors, 0, wind_speed)) %>% 
+#   mutate(precipitation_code = ifelse(precipitation > .035, "heavy_rain", ifelse(
+#                                      precipitation > .01, "moderate_rain", ifelse(
+#                                      precipitation > .00, "light_rain", "no_rain"
+#                                      )))) %>% 
+#   select(-c(precipitation, game_indoors))
+# 
+# 
+# # join data to GbG
+# game_info_weather = left_join(game_info_rank, weather_data, by = "game_id")
 
 
 
@@ -1397,7 +1407,10 @@ game_info_weather = left_join(game_info_rank, weather_data, by = "game_id")
 
 
 # select important columns from game_info and create needed cols
-game_data = game_info_weather %>%
+game_data = game_info_rank %>%
+  mutate(temperature = 0, humidity = 0, wind_speed = 0)
+game_data$precipitation_code = rep(c("heavy_rain", "moderate_rain", "light_rain", "no_rain"),length.out = dim(game_data)[1])
+game_data = game_data %>% 
   select(game_id, season, week, season_type, completed, neutral_site, conference_game, home_team,
          home_conference, home_division, home_points, home_moneyline, home_talent, rank_tier_home,
          home_pregame_elo, away_team, away_conference, away_division, away_points, away_book_pd,
@@ -1835,96 +1848,96 @@ both_joined = left_join(t1_joined, t2_prepped_metrics, by = c("t2_team", "season
 ### Join the Joined df with stats api
 
 
-
-
-stat_year_range = unique(range(stat_data$season))[1]:unique(range(stat_data$season))[2]
-
-
-for (yr in stat_year_range){
-  
-  if (yr == unique(range(stat_data$season))[1]){
-  
-      stat_data_filt = stat_data %>% filter(season == yr)
-      unique_teams = unique(stat_data_filt$team)
-      unique_weeks = unique(stat_data_filt$join_wk)
-      
-      stat_data_all = data.frame(expand.grid(team = unique_teams, join_wk = unique_weeks, season = yr))
-  
-  } else{
-    
-      stat_data_filt = stat_data %>% filter(season == yr)
-      unique_teams = unique(stat_data_filt$team)
-      unique_weeks = unique(stat_data_filt$join_wk)   
-      
-      stat_data_yr = data.frame(expand.grid(team = unique_teams, join_wk = unique_weeks, season = yr))
-      
-      stat_data_all = bind_rows(stat_data_yr, stat_data_all)
-    
-  }
-  
-}
-
-
-stat_data_joined = left_join(stat_data_all, stat_data, by = c("team", "season", "join_wk")) %>% 
-  arrange(team, season, join_wk) %>% 
-  group_by(team, season) %>% 
-  mutate(across(everything(), ~ ifelse(
-    is.na(.), 
-    ifelse(!is.na(lag(.)), lag(.), lag(., 2)),  # Check lag 1, then lag 2
-    .
-  ))) %>% 
-  ungroup()
-
-
-
-
-
-
-
-
-both_joined_mut = left_join(both_joined, weeks_in_seasons, by = "season")
-
-both_joined_mut = both_joined_mut %>% 
-  mutate(join_wk = ifelse(week < 19, week, max_week + 1))
-
-
-
-
-stat_data_t1 = stat_data_joined %>% 
-  rename(t1_team = team)
-
-colnames(stat_data_t1) <- ifelse(
-  grepl("off", colnames(stat_data_t1)),  # Check if column name contains "off"
-  paste0("t1_", colnames(stat_data_t1)),
-  ifelse(
-    grepl("def", colnames(stat_data_t1)),  # Check if column name contains "def"
-    paste0("t1_", colnames(stat_data_t1)),
-    colnames(stat_data_t1)  # Leave other column names unchanged
-  )
-)
-
-
-
-
-stat_data_t2 = stat_data_joined%>% 
-  rename(t2_team = team)
-
-colnames(stat_data_t2) <- ifelse(
-  grepl("off", colnames(stat_data_t2)),  # Check if column name contains "off"
-  paste0("t2_", colnames(stat_data_t2)),
-  ifelse(
-    grepl("def", colnames(stat_data_t2)),  # Check if column name contains "def"
-    paste0("t2_", colnames(stat_data_t2)),
-    colnames(stat_data_t2)  # Leave other column names unchanged
-  )
-)
-
-
-
-
-stat_joined = left_join(both_joined_mut, stat_data_t1, by = c("t1_team", "season", "join_wk"))
-stat_joined = left_join(stat_joined, stat_data_t2, by = c("t2_team", "season", "join_wk")) %>% 
-  select(-c(max_week, join_wk))
+# 
+# 
+# stat_year_range = unique(range(stat_data$season))
+# 
+# 
+# for (yr in stat_year_range){
+#   
+#   if (yr == unique(range(stat_data$season))[1]){
+#   
+#       stat_data_filt = stat_data %>% filter(season == yr)
+#       unique_teams = unique(stat_data_filt$team)
+#       unique_weeks = unique(stat_data_filt$join_wk)
+#       
+#       stat_data_all = data.frame(expand.grid(team = unique_teams, join_wk = unique_weeks, season = yr))
+#   
+#   } else{
+#     
+#       stat_data_filt = stat_data %>% filter(season == yr)
+#       unique_teams = unique(stat_data_filt$team)
+#       unique_weeks = unique(stat_data_filt$join_wk)   
+#       
+#       stat_data_yr = data.frame(expand.grid(team = unique_teams, join_wk = unique_weeks, season = yr))
+#       
+#       stat_data_all = bind_rows(stat_data_yr, stat_data_all)
+#     
+#   }
+#   
+# }
+# 
+# 
+# stat_data_joined = left_join(stat_data_all, stat_data, by = c("team", "season", "join_wk")) %>% 
+#   arrange(team, season, join_wk) %>% 
+#   group_by(team, season) %>% 
+#   mutate(across(everything(), ~ ifelse(
+#     is.na(.), 
+#     ifelse(!is.na(lag(.)), lag(.), lag(., 2)),  # Check lag 1, then lag 2
+#     .
+#   ))) %>% 
+#   ungroup()
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# both_joined_mut = left_join(both_joined, weeks_in_seasons, by = "season")
+# 
+# both_joined_mut = both_joined_mut %>% 
+#   mutate(join_wk = ifelse(week < 19, week, max_week + 1))
+# 
+# 
+# 
+# 
+# stat_data_t1 = stat_data_joined %>% 
+#   rename(t1_team = team)
+# 
+# colnames(stat_data_t1) <- ifelse(
+#   grepl("off", colnames(stat_data_t1)),  # Check if column name contains "off"
+#   paste0("t1_", colnames(stat_data_t1)),
+#   ifelse(
+#     grepl("def", colnames(stat_data_t1)),  # Check if column name contains "def"
+#     paste0("t1_", colnames(stat_data_t1)),
+#     colnames(stat_data_t1)  # Leave other column names unchanged
+#   )
+# )
+# 
+# 
+# 
+# 
+# stat_data_t2 = stat_data_joined%>% 
+#   rename(t2_team = team)
+# 
+# colnames(stat_data_t2) <- ifelse(
+#   grepl("off", colnames(stat_data_t2)),  # Check if column name contains "off"
+#   paste0("t2_", colnames(stat_data_t2)),
+#   ifelse(
+#     grepl("def", colnames(stat_data_t2)),  # Check if column name contains "def"
+#     paste0("t2_", colnames(stat_data_t2)),
+#     colnames(stat_data_t2)  # Leave other column names unchanged
+#   )
+# )
+# 
+# 
+# 
+# 
+# stat_joined = left_join(both_joined_mut, stat_data_t1, by = c("t1_team", "season", "join_wk"))
+# stat_joined = left_join(stat_joined, stat_data_t2, by = c("t2_team", "season", "join_wk")) %>% 
+#   select(-c(max_week, join_wk))
 
 
 ```
@@ -1990,7 +2003,7 @@ get_matching_col_record <- function(colname, swap_team, swap_window) {
 
 
 # pbp stats 
-pbp_oa = stat_joined %>% 
+pbp_oa = both_joined %>% 
   
   ## T1
   
@@ -2010,25 +2023,25 @@ pbp_oa = stat_joined %>%
   
   # compute rolling means based on these lags
   mutate(across(
-    .cols = matches("(off|def).*lag"), # Select columns containing "off"/"def" and "t1"/"t2"
+    .cols = matches("(off|def).*lag"), # select columns with "off"/"def" and "t1"/"t2"
     .fns = ~ {
-      # Determine the rolling window size based on the column name
+      # determine the rolling window size based on the column name
       window_size <- get_window_size(cur_column())
       
-      # Calculate the rolling sum
+      # dalculate the rolling sum
       rolling_sum <- rollapplyr(replace(.x, is.na(.x), 0), width = window_size, FUN = sum, partial = TRUE, align = "right")
       
-      # Calculate the rolling count (number of rows used)
+      # calculate the rolling count (number of rows used)
       rolling_count <- rollapplyr(!is.na(.x), width = window_size, FUN = sum, partial = TRUE, align = "right")
       
-      # Calculate the rolling average
+      # calculate the rolling average
       rolling_sum / rolling_count
     },
-    .names = "{.col}_rollavg" # Add rolling averages as new columns
+    .names = "{.col}_rollavg"
   )) %>%
   rename_with(
-    .fn = ~ str_replace(., "_lag_rollavg$", "_rollavg"), # Replace "_lag_rollavg" with "_rollavg"
-    .cols = ends_with("_lag_rollavg") # Select columns that end with "_lag_rollavg"
+    .fn = ~ str_replace(., "_lag_rollavg$", "_rollavg"),
+    .cols = ends_with("_lag_rollavg") # select roll avg cols
   ) %>% 
   select(-contains("lag")) %>% 
   
@@ -2037,16 +2050,16 @@ pbp_oa = stat_joined %>%
   mutate(across(
     .cols = matches("(off|def)") & matches("t1") & !matches("_rollavg")  & !matches("_total_ppa_"), # Select original columns
     .fns = ~ {
-      # Identify the current team (t1/t2) and role (off/def)
+      # identify the current team (t1/t2) and role (off/def)
       current_col <- cur_column()
       new_team <- ifelse(grepl("t1", current_col), "t2", "t1")
       new_role <- ifelse(grepl("off", current_col), "def", "off")
       new_window = ifelse(grepl("l1", current_col), TRUE, FALSE)
       
-      # Construct the matching column name
+      # construct the matching col name
       matching_col <- get_matching_col_offdef(current_col, new_team, new_role, new_window)
       
-      # Perform the subtraction if the matching column exists
+      # subtract w matching col
       
       result = . - get(paste0(matching_col, "_rollavg"))
       return(result)
@@ -2079,47 +2092,47 @@ pbp_oa = stat_joined %>%
   mutate(across(
     .cols = matches("(off|def).*lag"), # Select columns containing "off"/"def" and "t1"/"t2"
     .fns = ~ {
-      # Determine the rolling window size based on the column name
+      # determine the rolling window size based on the column name
       window_size <- get_window_size(cur_column())
       
-      # Calculate the rolling sum
+      # calculate the rolling sum
       rolling_sum <- rollapplyr(replace(.x, is.na(.x), 0), width = window_size, FUN = sum, partial = TRUE, align = "right")
       
-      # Calculate the rolling count (number of rows used)
+      # calculate the rolling count (number of rows used)
       rolling_count <- rollapplyr(!is.na(.x), width = window_size, FUN = sum, partial = TRUE, align = "right")
       
-      # Calculate the rolling average
+      # calculate the rolling average
       rolling_sum / rolling_count
     },
-    .names = "{.col}_rollavg" # Add rolling averages as new columns
+    .names = "{.col}_rollavg" 
   )) %>%
   rename_with(
-    .fn = ~ str_replace(., "_lag_rollavg$", "_rollavg"), # Replace "_lag_rollavg" with "_rollavg"
-    .cols = ends_with("_lag_rollavg") # Select columns that end with "_lag_rollavg"
+    .fn = ~ str_replace(., "_lag_rollavg$", "_rollavg"), 
+    .cols = ends_with("_lag_rollavg") # select rollavg cols
   ) %>% 
   select(-contains("lag")) %>% 
   
     
   # for each original column, find its rolling average inverse and compute the oa stat
   mutate(across(
-    .cols = matches("(off|def)") & matches("t2") & !matches("_rollavg")  & !matches("_total_ppa_"), # Select original columns
+    .cols = matches("(off|def)") & matches("t2") & !matches("_rollavg")  & !matches("_total_ppa_"),
     .fns = ~ {
-      # Identify the current team (t1/t2) and role (off/def)
+      # identify the current team (t1/t2) and role (off/def)
       current_col <- cur_column()
       new_team <- ifelse(grepl("t1", current_col), "t2", "t1")
       new_role <- ifelse(grepl("off", current_col), "def", "off")
       new_window = ifelse(grepl("l1", current_col), TRUE, FALSE)
       
-      # Construct the matching column name
+      # construct the matching col name
       matching_col <- get_matching_col_offdef(current_col, new_team, new_role, new_window)
       
-      # Perform the subtraction if the matching column exists
+      # subtract w matching col
       
       result = . - get(paste0(matching_col, "_rollavg"))
       return(result)
       } 
     ,
-    .names = "{.col}_oa" # Add differences as new columns
+    .names = "{.col}_oa" 
   )) %>%
   
   select(-contains("rollavg")) %>% 
@@ -2162,23 +2175,23 @@ points_oa = pbp_oa %>%
   mutate(across(
     .cols = matches("(_pf_|_pa_).*lag"), # Select columns 
     .fns = ~ {
-      # Determine the rolling window size based on the column name
+      # determine the rolling window size based on the column name
       window_size <- get_window_size(cur_column())
       
-      # Calculate the rolling sum
+      # calculate the rolling sum
       rolling_sum <- rollapplyr(replace(.x, is.na(.x), 0), width = window_size, FUN = sum, partial = TRUE, align = "right")
       
-      # Calculate the rolling count (number of rows used)
+      # calculate the rolling count (number of rows used)
       rolling_count <- rollapplyr(!is.na(.x), width = window_size, FUN = sum, partial = TRUE, align = "right")
       
-      # Calculate the rolling average
+      # calculate the rolling average
       rolling_sum / rolling_count
     },
-    .names = "{.col}_rollavg" # Add rolling averages as new columns
+    .names = "{.col}_rollavg"
   )) %>%
   rename_with(
-    .fn = ~ str_replace(., "_lag_rollavg$", "_rollavg"), # Replace "_lag_rollavg" with "_rollavg"
-    .cols = ends_with("_lag_rollavg") # Select columns that end with "_lag_rollavg"
+    .fn = ~ str_replace(., "_lag_rollavg$", "_rollavg"),
+    .cols = ends_with("_lag_rollavg") # select rollavg cols
   ) %>% 
   select(-contains("lag")) %>% 
   
@@ -2193,16 +2206,16 @@ points_oa = pbp_oa %>%
       new_role <- ifelse(grepl("pf", current_col), "pa", "pf")
       new_window = ifelse(grepl("l1", current_col), TRUE, FALSE)
       
-      # Construct the matching column name
+      # construct the matching column name
       matching_col <- get_matching_col_pfpa(current_col, new_team, new_role, new_window)
       
-      # Perform the subtraction if the matching column exists
+      # subtract w matching col
       
       result = . - get(paste0(matching_col, "_rollavg"))
       return(result)
       } 
     ,
-    .names = "{.col}_oa" # Add differences as new columns
+    .names = "{.col}_oa" 
   )) %>% 
   
   select(-contains("rollavg")) %>% 
@@ -2227,23 +2240,22 @@ points_oa = pbp_oa %>%
   mutate(across(
     .cols = matches("(_pf_|_pa_).*lag"), # Select columns 
     .fns = ~ {
-      # Determine the rolling window size based on the column name
+      # determine the rolling window size based on the column name
       window_size <- get_window_size(cur_column())
       
-      # Calculate the rolling sum
+      # calculate the rolling sum
       rolling_sum <- rollapplyr(replace(.x, is.na(.x), 0), width = window_size, FUN = sum, partial = TRUE, align = "right")
       
-      # Calculate the rolling count (number of rows used)
+      # calculate the rolling count (number of rows used)
       rolling_count <- rollapplyr(!is.na(.x), width = window_size, FUN = sum, partial = TRUE, align = "right")
       
-      # Calculate the rolling average
       rolling_sum / rolling_count
     },
-    .names = "{.col}_rollavg" # Add rolling averages as new columns
+    .names = "{.col}_rollavg" 
   )) %>%
   rename_with(
-    .fn = ~ str_replace(., "_lag_rollavg$", "_rollavg"), # Replace "_lag_rollavg" with "_rollavg"
-    .cols = ends_with("_lag_rollavg") # Select columns that end with "_lag_rollavg"
+    .fn = ~ str_replace(., "_lag_rollavg$", "_rollavg"), 
+    .cols = ends_with("_lag_rollavg") # select rollavg cols
   ) %>% 
   select(-contains("lag")) %>% 
   
@@ -2252,22 +2264,22 @@ points_oa = pbp_oa %>%
   mutate(across(
     .cols = matches("(_pf_|_pa_)") & matches("t2") & !matches("_rollavg") , # Select original columns
     .fns = ~ {
-      # Identify 
+      # identify current col
       current_col <- cur_column()
       new_team <- ifelse(grepl("t1", current_col), "t2", "t1")
       new_role <- ifelse(grepl("pf", current_col), "pa", "pf")
       new_window = ifelse(grepl("l1", current_col), TRUE, FALSE)
       
-      # Construct the matching column name
+      # construct the matching column name
       matching_col <- get_matching_col_pfpa(current_col, new_team, new_role, new_window)
       
-      # Perform the subtraction if the matching column exists
+      # subtract w original col
       
       result = . - get(paste0(matching_col, "_rollavg"))
       return(result)
       } 
     ,
-    .names = "{.col}_oa" # Add differences as new columns
+    .names = "{.col}_oa"
   )) %>% 
   
   select(-contains("rollavg")) %>% 
@@ -2284,7 +2296,7 @@ points_oa = pbp_oa %>%
 ### GBG RECORD METRICS OA CALCS ###
 
 
-#gbg record stats
+# gbg record stats
 all_oa = points_oa %>%
   
   ## T1
@@ -2306,23 +2318,23 @@ all_oa = points_oa %>%
   mutate(across(
     .cols = matches("(record).*lag"), # Select columns 
     .fns = ~ {
-      # Determine the rolling window size based on the column name
+      # determine the rolling window size based on the column name
       window_size <- get_window_size(cur_column())
       
-      # Calculate the rolling sum
+      # calculate the rolling sum
       rolling_sum <- rollapplyr(replace(.x, is.na(.x), 0), width = window_size, FUN = sum, partial = TRUE, align = "right")
       
-      # Calculate the rolling count (number of rows used)
+      # calculate the rolling count (number of rows used)
       rolling_count <- rollapplyr(!is.na(.x), width = window_size, FUN = sum, partial = TRUE, align = "right")
       
-      # Calculate the rolling average
+      # calculate the rolling average
       rolling_sum / rolling_count
     },
     .names = "{.col}_rollavg" # Add rolling averages as new columns
   )) %>%
   rename_with(
-    .fn = ~ str_replace(., "_lag_rollavg$", "_rollavg"), # Replace "_lag_rollavg" with "_rollavg"
-    .cols = ends_with("_lag_rollavg") # Select columns that end with "_lag_rollavg"
+    .fn = ~ str_replace(., "_lag_rollavg$", "_rollavg"),
+    .cols = ends_with("_lag_rollavg") # select rollavg cols
   ) %>% 
   select(-contains("lag")) %>% 
   
@@ -2331,21 +2343,21 @@ all_oa = points_oa %>%
   mutate(across(
     .cols = matches("(record)") & matches("t1") & !matches("_rollavg") , # Select original columns
     .fns = ~ {
-      # Identify the current team (t1/t2) and role (off/def)
+      # identify the current team (t1/t2) and role (off/def)
       current_col <- cur_column()
       new_team <- ifelse(grepl("t1", current_col), "t2", "t1")
       new_window = ifelse(grepl("l1", current_col), TRUE, FALSE)
       
-      # Construct the matching column name
+      # construct the matching column name
       matching_col <- get_matching_col_record(current_col, new_team, new_window)
       
-      # Perform the subtraction if the matching column exists
+      # subtract w original col
       
       result = . - (1-get(paste0(matching_col, "_rollavg")))
       return(result)
       } 
     ,
-    .names = "{.col}_oa" # Add differences as new columns
+    .names = "{.col}_oa"
   )) %>% 
   
   select(-contains("rollavg"))%>% 
@@ -2371,23 +2383,23 @@ all_oa = points_oa %>%
   mutate(across(
     .cols = matches("(record).*lag"), # Select columns 
     .fns = ~ {
-      # Determine the rolling window size based on the column name
+      # determine the rolling window size based on the column name
       window_size <- get_window_size(cur_column())
       
-      # Calculate the rolling sum
+      # calculate the rolling sum
       rolling_sum <- rollapplyr(replace(.x, is.na(.x), 0), width = window_size, FUN = sum, partial = TRUE, align = "right")
       
-      # Calculate the rolling count (number of rows used)
+      # calculate the rolling count (number of rows used)
       rolling_count <- rollapplyr(!is.na(.x), width = window_size, FUN = sum, partial = TRUE, align = "right")
       
-      # Calculate the rolling average
+      # calculate the rolling average
       rolling_sum / rolling_count
     },
-    .names = "{.col}_rollavg" # Add rolling averages as new columns
+    .names = "{.col}_rollavg"
   )) %>%
   rename_with(
-    .fn = ~ str_replace(., "_lag_rollavg$", "_rollavg"), # Replace "_lag_rollavg" with "_rollavg"
-    .cols = ends_with("_lag_rollavg") # Select columns that end with "_lag_rollavg"
+    .fn = ~ str_replace(., "_lag_rollavg$", "_rollavg"),
+    .cols = ends_with("_lag_rollavg") # select rollavg cols
   ) %>% 
   select(-contains("lag")) %>% 
   
@@ -2396,21 +2408,21 @@ all_oa = points_oa %>%
   mutate(across(
     .cols = matches("(record)") & matches("t2") & !matches("_rollavg") , # Select original columns
     .fns = ~ {
-      # Identify the current team (t1/t2) and role (off/def)
+      # identify the current team (t1/t2) and role (off/def)
       current_col <- cur_column()
       new_team <- ifelse(grepl("t1", current_col), "t2", "t1")
       new_window = ifelse(grepl("l1", current_col), TRUE, FALSE)
       
-      # Construct the matching column name
+      # construct the matching column name
       matching_col <- get_matching_col_record(current_col, new_team, new_window)
       
-      # Perform the subtraction if the matching column exists
+      # subtract w original col
       
       result = . - (1-get(paste0(matching_col, "_rollavg")))
       return(result)
       } 
     ,
-    .names = "{.col}_oa" # Add differences as new columns
+    .names = "{.col}_oa"
   )) %>% 
   
   select(-contains("rollavg"))%>% 
@@ -2437,17 +2449,17 @@ get_matching_col_otdiff3 <- function(colname, window) {
 
 
 
-# compute stats
+# compute stats for l3 vs l20
 ot_diff = all_oa %>% 
   # for each original column, find the difference between recent and past of the stat
   mutate(across(
-    .cols = matches("l3") & !matches("_err_"), # Select original columns
+    .cols = matches("l3") & !matches("_err_"), 
     .fns = ~ {
-      # Identify 
+      # identify col 
       current_col <- cur_column()
       new_window = "l20"
       
-      # Construct the matching column name
+      # construct the matching column name
       matching_col <- get_matching_col_otdiff3(current_col, new_window)
       
       # Perform the subtraction if the matching column exists
@@ -2456,7 +2468,7 @@ ot_diff = all_oa %>%
       return(result)
       } 
     ,
-    .names = "{.col}_diffl20" # Add differences as new columns
+    .names = "{.col}_diffl20" # new cols
   )) 
 
 
@@ -2470,18 +2482,13 @@ Write Master df to csv
 ```{r}
 
 # final df
-final_df = ot_diff
+final_df = ot_diff 
 
-# write to csv
-#write.csv(final_df, "cfb_model_data_prep_full.csv")
+write.csv(final_df, "this_week_prepped_data.csv")
 
-#write.csv(final_df, gzfile("cfb_model_data_prep_full_check.csv.gz"), row.names = FALSE)
 
 
 ```
-
-
-
 
 
 

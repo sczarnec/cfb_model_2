@@ -1,0 +1,781 @@
+---
+title: "Bootstrapping"
+output: html_document
+date: "2025-08-15"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(rsample)
+library(mice)
+library(fastDummies)
+library(xgboost)
+library(Metrics)
+library(caret)
+library(httr2)
+library(readr)
+library(cfbfastR)
+library(scales)
+```
+
+
+```{r}
+winnings_calc = read.csv("test_this.csv")
+
+winnings_calc2 = read.csv("final_prediction_df_21to24.csv")
+```
+
+
+
+```{r}
+
+confidence_bootstrap = function(data, levels, conf_colname, naive_colname, winnings_colname){
+
+    rows = levels
+    col_names = c("confidence", "n","mean", "lower_bound", "upper_bound")
+    
+    
+    conf_colname = conf_colname
+    naive_win_colname = naive_colname
+    winnings_colname = winnings_colname
+    
+    results_df = data.frame(matrix(NA, nrow = length(rows), ncol = length(col_names)),
+                     stringsAsFactors = FALSE)
+    colnames(results_df) = col_names
+    
+    
+    it = 0
+    for (r in rows){
+    
+      threshold = r
+      it = it+1
+      
+      
+      df = data
+    
+    
+        
+        
+        
+        names(df)[which(names(df)==conf_colname)] = "target_confidence"
+        names(df)[which(names(df)==naive_colname)] = "naive_target_winnings"
+        names(df)[which(names(df)==winnings_colname)] = "target_winnings"
+        
+        
+        
+        
+        
+        
+        df = df %>% filter(target_confidence>threshold)
+        #print(paste0("Threshold ", r, " has ", length(df$target_winnings), "observations"))
+        
+        n = length(df$target_winnings)
+        
+        
+        set.seed(844)
+        
+        # Parameters
+        n_iter <- 1000  # Number of bootstrap iterations
+        n <- nrow(df)   # Sample size (same as full dataset)
+        
+        # Store bootstrap means
+        boot_means <- numeric(n_iter)
+        
+        # Bootstrap loop
+        for (i in 1:n_iter) {
+          # Sample row indices with replacement
+          sample_indices <- sample(1:n, size = n, replace = TRUE)
+          
+          # Get the sample
+          sample_df <- df[sample_indices, ]
+          
+          # Compute the mean of the column of interest
+          boot_means[i] <- mean(sample_df$target_winnings, na.rm = TRUE)
+        }
+        
+        # Results
+        mean_estimate <- mean(boot_means)
+        ci_lower <- quantile(boot_means, 0.025)
+        ci_upper <- quantile(boot_means, 0.975)
+        
+        # Output
+        #cat("Bootstrap mean:", round(mean_estimate, 4), "\n")
+        #cat("95% CI:", round(ci_lower, 4), "-", round(ci_upper, 4), "\n")
+        #print(" ")
+    
+        
+        
+        
+        results_df[it,"confidence"] = r
+        results_df[it,"n"] = n
+        results_df[it, "mean"] = mean_estimate - 1
+        results_df[it, "lower_bound"] = ci_lower - 1
+        results_df[it, "upper_bound"] = ci_upper - 1
+        
+    }
+    
+    
+    return(results_df)
+
+
+
+}
+
+
+
+
+
+```
+
+```{r}
+
+season_bootstrap = function(data, seasons, conf_colname, naive_colname, winnings_colname){
+
+    rows = seasons
+    col_names = c("season", "n","mean", "lower_bound", "upper_bound")
+    
+    
+    conf_colname = conf_colname
+    naive_win_colname = naive_colname
+    winnings_colname = winnings_colname
+    
+    results_df = data.frame(matrix(NA, nrow = length(rows), ncol = length(col_names)),
+                     stringsAsFactors = FALSE)
+    colnames(results_df) = col_names
+    
+    
+    it = 0
+    for (r in rows){
+    
+
+      it = it+1
+      
+      
+      df = data
+    
+    
+        
+        
+        
+        names(df)[which(names(df)==conf_colname)] = "target_confidence"
+        names(df)[which(names(df)==naive_colname)] = "naive_target_winnings"
+        names(df)[which(names(df)==winnings_colname)] = "target_winnings"
+        
+        
+        
+        
+        
+        
+        df = df %>% filter(season==r)
+        #print(paste0("Threshold ", r, " has ", length(df$target_winnings), "observations"))
+        
+        n = length(df$target_winnings)
+        
+        
+        set.seed(844)
+        
+        # Parameters
+        n_iter <- 1000  # Number of bootstrap iterations
+        n <- nrow(df)   # Sample size (same as full dataset)
+        
+        # Store bootstrap means
+        boot_means <- numeric(n_iter)
+        
+        # Bootstrap loop
+        for (i in 1:n_iter) {
+          # Sample row indices with replacement
+          sample_indices <- sample(1:n, size = n, replace = TRUE)
+          
+          # Get the sample
+          sample_df <- df[sample_indices, ]
+          
+          # Compute the mean of the column of interest
+          boot_means[i] <- mean(sample_df$target_winnings, na.rm = TRUE)
+        }
+        
+        # Results
+        mean_estimate <- mean(boot_means)
+        ci_lower <- quantile(boot_means, 0.025)
+        ci_upper <- quantile(boot_means, 0.975)
+        
+        # Output
+        #cat("Bootstrap mean:", round(mean_estimate, 4), "\n")
+        #cat("95% CI:", round(ci_lower, 4), "-", round(ci_upper, 4), "\n")
+        #print(" ")
+    
+        
+        
+        
+        results_df[it,"season"] = r
+        results_df[it,"n"] = n
+        results_df[it, "mean"] = mean_estimate - 1
+        results_df[it, "lower_bound"] = ci_lower - 1
+        results_df[it, "upper_bound"] = ci_upper - 1
+        
+    }
+    
+    
+    return(results_df)
+
+
+
+}
+
+
+
+
+
+```
+
+
+
+
+```{r}
+
+confs = c(0, .01, .02, .025, .03, .04, .05, .075, .10)
+spread_conf_df = confidence_bootstrap(winnings_calc, confs, "cover_confidence", "naive_spread_winnings", "spread_winnings")
+
+
+seasons = c(2021, 2022, 2023, 2024)
+spread_seas_df = season_bootstrap(winnings_calc, seasons, "cover_confidence", "naive_spread_winnings", "spread_winnings")
+
+
+```
+
+
+```{r}
+
+
+confs = c(-1, 0, .01, .02, .03, .04, .05, .075, .10)
+ml_conf_df = confidence_bootstrap(winnings_calc, confs, "ml_value", "naive_ml_winnings", "ml_winnings")
+
+
+seasons = c(2021, 2022, 2023, 2024)
+ml_seas_df = season_bootstrap(winnings_calc, seasons, "ml_value", "naive_ml_winnings", "ml_winnings")
+
+
+```
+
+
+```{r}
+
+confs = c(0, .01, .02, .025, .03, .04, .05, .075, .10)
+over_conf_df = confidence_bootstrap(winnings_calc, confs, "ou_confidence", "naive_ou_winnings", "ou_winnings")
+
+
+seasons = c(2021, 2022, 2023, 2024)
+over_seas_df = season_bootstrap(winnings_calc, seasons, "ou_confidence", "naive_ou_winnings", "ou_winnings")
+
+
+```
+
+
+```{r}
+
+
+
+# df should have: confidence, n, mean, lower_bound, upper_bound
+plot_df <- spread_conf_df %>%
+  arrange(confidence) %>%
+  mutate(
+    conf_lab = percent(confidence, accuracy = 0.1),
+    conf_fac = factor(conf_lab, levels = unique(conf_lab))
+  )
+
+ggplot(plot_df, aes(x = conf_fac, y = mean, fill = n)) +
+  geom_col(width = 0.8, color = "grey30") +
+  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound),
+                width = 0.2, color = "grey20", linewidth = 0.6) +
+  geom_hline(yintercept = -.0455, 
+             linetype = "dashed", color = "gray", linewidth = 0.7) +
+  geom_hline(yintercept = 0,
+           color = "black", 
+           linewidth = .05) +
+    annotate("text", x = 7, y = -.067, 
+           label = "Average Bettor",
+           color = "gray", hjust = 0, vjust = -0.5, fontface = "bold") +
+  scale_fill_gradient(
+    name = "sample size",
+    low = "#DEEBF7",   # dark blue
+    high = "#08306B"   # light blue
+  ) +
+  scale_y_continuous(labels = number_format(accuracy = 0.01), limits = c(-.10, .2), 
+                     breaks = seq(-0.10, 0.20, by = 0.10), minor_breaks = seq(-0.10, 0.20, by = 0.05), expand = expansion(mult = c(0.02, 0.05))) +
+  labs(
+    title = "Mean Spread Return by Cover Prediction",
+    subtitle = "Bootstrapped mean with 95% confidence interval",
+    x = "Min Cover probability above 50%",
+    y = "Mean return"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(color = "grey35"),
+    panel.grid.minor.y = element_line(color = "grey85", linewidth = 0.3),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right",
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+
+
+
+
+
+
+
+
+# df should have: confidence, n, mean, lower_bound, upper_bound
+plot_df <- spread_seas_df %>%
+  arrange(season) 
+
+ggplot(plot_df, aes(x = season, y = mean, fill = n)) +
+  geom_col(width = 0.8, color = "grey30") +
+  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound),
+                width = 0.2, color = "grey20", linewidth = 0.6) +
+  geom_hline(yintercept = -.0455, 
+           linetype = "dashed", color = "gray", linewidth = 0.7) +
+  geom_hline(yintercept = 0,
+           color = "black", 
+           linewidth = .05) +
+  annotate("text", x = 2023.65, y = -.067,
+         label = "Average Bettor",
+         color = "gray", hjust = 0, vjust = -0.5, fontface = "bold") +
+  scale_fill_gradient(
+    name = "sample size",
+    low = "#DEEBF7",   # dark blue
+    high = "#08306B"   # light blue
+  ) +
+  scale_y_continuous(labels = number_format(accuracy = 0.01), limits = c(-.10, .15),
+                     expand = expansion(mult = c(0.02, 0.05))) +
+  labs(
+    title = "Mean Spread Return by Season",
+    subtitle = "Bootstrapped mean with 95% confidence interval",
+    x = "Season",
+    y = "Mean return"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(color = "grey35"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right",
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+```
+
+```{r}
+
+
+
+# df should have: confidence, n, mean, lower_bound, upper_bound
+plot_df <- spread_conf_df %>%
+  arrange(confidence) %>%
+  mutate(
+    conf_lab = percent(confidence, accuracy = 0.1),
+    conf_fac = factor(conf_lab, levels = unique(conf_lab))
+  )
+
+ggplot(plot_df, aes(x = conf_fac, y = mean, fill = n)) +
+  geom_col(width = 0.8, color = "grey30") +
+  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound),
+                width = 0.2, color = "grey20", linewidth = 0.6) +
+  geom_hline(yintercept = -.0455, 
+             linetype = "dashed", color = "gray", linewidth = 0.7) +
+  geom_hline(yintercept = 0,
+           color = "black", 
+           linewidth = .05) +
+    annotate("text", x = 7, y = -.067, 
+           label = "Average Bettor",
+           color = "gray", hjust = 0, vjust = -0.5, fontface = "bold") +
+  scale_fill_gradient(
+    name = "sample size",
+    low = "#DEEBF7",   # dark blue
+    high = "#08306B"   # light blue
+  ) +
+  scale_y_continuous(labels = number_format(accuracy = 0.01), limits = c(-.10, .2), 
+                     breaks = seq(-0.10, 0.20, by = 0.10), minor_breaks = seq(-0.10, 0.20, by = 0.05), expand = expansion(mult = c(0.02, 0.05))) +
+  labs(
+    title = "Mean Spread Return by Cover Prediction",
+    subtitle = "Bootstrapped mean with 95% confidence interval",
+    x = "Min Cover probability above 50%",
+    y = "Mean return"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(color = "grey35"),
+    panel.grid.minor.y = element_line(color = "grey85", linewidth = 0.3),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right",
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+
+
+
+
+
+
+
+
+# df should have: confidence, n, mean, lower_bound, upper_bound
+plot_df <- spread_seas_df %>%
+  arrange(season) 
+
+ggplot(plot_df, aes(x = season, y = mean, fill = n)) +
+  geom_col(width = 0.8, color = "grey30") +
+  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound),
+                width = 0.2, color = "grey20", linewidth = 0.6) +
+  geom_hline(yintercept = -.0455, 
+           linetype = "dashed", color = "gray", linewidth = 0.7) +
+  geom_hline(yintercept = 0,
+           color = "black", 
+           linewidth = .05) +
+  annotate("text", x = 2023.65, y = -.067,
+         label = "Average Bettor",
+         color = "gray", hjust = 0, vjust = -0.5, fontface = "bold") +
+  scale_fill_gradient(
+    name = "sample size",
+    low = "#DEEBF7",   # dark blue
+    high = "#08306B"   # light blue
+  ) +
+  scale_y_continuous(labels = number_format(accuracy = 0.01), limits = c(-.10, .15),
+                     expand = expansion(mult = c(0.02, 0.05))) +
+  labs(
+    title = "Mean Spread Return by Season",
+    subtitle = "Bootstrapped mean with 95% confidence interval",
+    x = "Season",
+    y = "Mean return"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(color = "grey35"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right",
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+```
+
+
+
+```{r}
+
+
+
+# df should have: confidence, n, mean, lower_bound, upper_bound
+plot_df <- ml_conf_df %>%
+  arrange(confidence) %>%
+  mutate(
+    conf_lab = percent(confidence, accuracy = 0.1),
+    conf_fac = factor(conf_lab, levels = unique(conf_lab))
+  )
+
+ggplot(plot_df, aes(x = conf_fac, y = mean, fill = n)) +
+  geom_col(width = 0.8, color = "grey30") +
+  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound),
+                width = 0.2, color = "grey20", linewidth = 0.6) +
+  geom_hline(yintercept = -.0455, 
+             linetype = "dashed", color = "gray", linewidth = 0.7) +
+  geom_hline(yintercept = 0,
+           color = "black", 
+           linewidth = .05) +
+    annotate("text", x = 7, y = -.08, 
+           label = "Average Bettor",
+           color = "gray", hjust = 0, vjust = -0.5, fontface = "bold") +
+  scale_fill_gradient(
+    name = "sample size",
+    low = "#DEEBF7",   # dark blue
+    high = "#08306B"   # light blue
+  ) +
+  scale_y_continuous(labels = number_format(accuracy = 0.01), limits = c(-.10, .40), 
+                     breaks = seq(-0.10, 0.40, by = 0.10), minor_breaks = seq(-0.10, 0.40, by = 0.05), expand = expansion(mult = c(0.02, 0.05))) +
+  labs(
+    title = "Mean Moneyline Return by Value",
+    subtitle = "Bootstrapped mean with 95% confidence interval",
+    x = "Min predicted Win prob vs sportsbook",
+    y = "Mean return"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(color = "grey35"),
+    panel.grid.minor.y = element_line(color = "grey85", linewidth = 0.3),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right",
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+
+
+
+
+
+
+
+
+# df should have: confidence, n, mean, lower_bound, upper_bound
+plot_df <- ml_seas_df %>%
+  arrange(season) 
+
+ggplot(plot_df, aes(x = season, y = mean, fill = n)) +
+  geom_col(width = 0.8, color = "grey30") +
+  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound),
+                width = 0.2, color = "grey20", linewidth = 0.6) +
+  geom_hline(yintercept = -.0455, 
+           linetype = "dashed", color = "gray", linewidth = 0.7) +
+  geom_hline(yintercept = 0,
+           color = "black", 
+           linewidth = .05) +
+  annotate("text", x = 2023.65, y = -.08,
+         label = "Average Bettor",
+         color = "gray", hjust = 0, vjust = -0.5, fontface = "bold") +
+  scale_fill_gradient(
+    name = "sample size",
+    low = "#DEEBF7",   # dark blue
+    high = "#08306B"   # light blue
+  ) +
+  scale_y_continuous(labels = number_format(accuracy = 0.01), limits = c(-.10, .4),
+                     expand = expansion(mult = c(0.02, 0.05))) +
+  labs(
+    title = "Mean Moneyline Return by Season",
+    subtitle = "Bootstrapped mean with 95% confidence interval",
+    x = "Season",
+    y = "Mean return"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(color = "grey35"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right",
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+```
+
+
+
+
+
+
+
+
+```{r}
+
+
+
+# df should have: confidence, n, mean, lower_bound, upper_bound
+plot_df <- ml_conf_df %>%
+  arrange(confidence) %>%
+  mutate(
+    conf_lab = percent(confidence, accuracy = 0.1),
+    conf_fac = factor(conf_lab, levels = unique(conf_lab))
+  )
+
+ggplot(plot_df, aes(x = conf_fac, y = mean, fill = n)) +
+  geom_col(width = 0.8, color = "grey30") +
+  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound),
+                width = 0.2, color = "grey20", linewidth = 0.6) +
+  geom_hline(yintercept = -.0455, 
+             linetype = "dashed", color = "gray", linewidth = 0.7) +
+  geom_hline(yintercept = 0,
+           color = "black", 
+           linewidth = .05) +
+    annotate("text", x = 7, y = -.08, 
+           label = "Average Bettor",
+           color = "gray", hjust = 0, vjust = -0.5, fontface = "bold") +
+  scale_fill_gradient(
+    name = "sample size",
+    low = "#DEEBF7",   # dark blue
+    high = "#08306B"   # light blue
+  ) +
+  scale_y_continuous(labels = number_format(accuracy = 0.01), limits = c(-.10, .40), 
+                     breaks = seq(-0.10, 0.40, by = 0.10), minor_breaks = seq(-0.10, 0.40, by = 0.05), expand = expansion(mult = c(0.02, 0.05))) +
+  labs(
+    title = "Mean Moneyline Return by Value",
+    subtitle = "Bootstrapped mean with 95% confidence interval",
+    x = "Min predicted Win prob vs sportsbook",
+    y = "Mean return"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(color = "grey35"),
+    panel.grid.minor.y = element_line(color = "grey85", linewidth = 0.3),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right",
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+
+
+
+
+
+
+
+
+# df should have: confidence, n, mean, lower_bound, upper_bound
+plot_df <- ml_seas_df %>%
+  arrange(season) 
+
+ggplot(plot_df, aes(x = season, y = mean, fill = n)) +
+  geom_col(width = 0.8, color = "grey30") +
+  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound),
+                width = 0.2, color = "grey20", linewidth = 0.6) +
+  geom_hline(yintercept = -.0455, 
+           linetype = "dashed", color = "gray", linewidth = 0.7) +
+  geom_hline(yintercept = 0,
+           color = "black", 
+           linewidth = .05) +
+  annotate("text", x = 2023.65, y = -.08,
+         label = "Average Bettor",
+         color = "gray", hjust = 0, vjust = -0.5, fontface = "bold") +
+  scale_fill_gradient(
+    name = "sample size",
+    low = "#DEEBF7",   # dark blue
+    high = "#08306B"   # light blue
+  ) +
+  scale_y_continuous(labels = number_format(accuracy = 0.01), limits = c(-.10, .4),
+                     expand = expansion(mult = c(0.02, 0.05))) +
+  labs(
+    title = "Mean Moneyline Return by Season",
+    subtitle = "Bootstrapped mean with 95% confidence interval",
+    x = "Season",
+    y = "Mean return"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(color = "grey35"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right",
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+```
+
+
+```{r}
+
+
+
+# df should have: confidence, n, mean, lower_bound, upper_bound
+plot_df <- over_conf_df %>%
+  arrange(confidence) %>%
+  mutate(
+    conf_lab = percent(confidence, accuracy = 0.1),
+    conf_fac = factor(conf_lab, levels = unique(conf_lab))
+  )
+
+ggplot(plot_df, aes(x = conf_fac, y = mean, fill = n)) +
+  geom_col(width = 0.8, color = "grey30") +
+  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound),
+                width = 0.2, color = "grey20", linewidth = 0.6) +
+  geom_hline(yintercept = -.0455, 
+             linetype = "dashed", color = "gray", linewidth = 0.7) +
+  geom_hline(yintercept = 0,
+           color = "black", 
+           linewidth = .05) +
+    annotate("text", x = .8, y = -.077, 
+           label = "Average Bettor",
+           color = "gray", hjust = 0, vjust = -0.5, fontface = "bold") +
+  scale_fill_gradient(
+    name = "sample size",
+    low = "#DEEBF7",   # dark blue
+    high = "#08306B"   # light blue
+  ) +
+  scale_y_continuous(labels = number_format(accuracy = 0.01), limits = c(-.2, .10), 
+                     breaks = seq(-0.2, 0.10, by = 0.10), minor_breaks = seq(-0.2, 0.10, by = 0.05), expand = expansion(mult = c(0.02, 0.05))) +
+  labs(
+    title = "Mean Over/Under Return by Value",
+    subtitle = "Bootstrapped mean with 95% confidence interval",
+    x = "Min over probability above 50%",
+    y = "Mean return"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(color = "grey35"),
+    panel.grid.minor.y = element_line(color = "grey85", linewidth = 0.3),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right",
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+
+
+
+
+
+
+
+
+# df should have: confidence, n, mean, lower_bound, upper_bound
+plot_df <- over_seas_df %>%
+  arrange(season) 
+
+ggplot(plot_df, aes(x = season, y = mean, fill = n)) +
+  geom_col(width = 0.8, color = "grey30") +
+  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound),
+                width = 0.2, color = "grey20", linewidth = 0.6) +
+  geom_hline(yintercept = -.0455, 
+           linetype = "dashed", color = "gray", linewidth = 0.7) +
+  geom_hline(yintercept = 0,
+           color = "black", 
+           linewidth = .05) +
+  annotate("text", x = 2023.65, y = -.065,
+         label = "Average Bettor",
+         color = "gray", hjust = 0, vjust = -0.5, fontface = "bold") +
+  scale_fill_gradient(
+    name = "sample size",
+    low = "#DEEBF7",   # dark blue
+    high = "#08306B"   # light blue
+  ) +
+  scale_y_continuous(labels = number_format(accuracy = 0.01), limits = c(-.15, .1),
+                     expand = expansion(mult = c(0.02, 0.05))) +
+  labs(
+    title = "Mean Over/Under Return by Season",
+    subtitle = "Bootstrapped mean with 95% confidence interval",
+    x = "Season",
+    y = "Mean return"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(color = "grey35"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right",
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+```

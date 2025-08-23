@@ -37,8 +37,16 @@ source("cfb_app_helpers.R")
 
 ```{r, warning=FALSE}
 
-# model data
-cfb_data = read.csv(gzfile("cfb_model_data_prep_full_check.csv.gz"))
+# this week (really season's) prepped data
+cfb_data_this_week = read.csv("this_week_prepped_data.csv")
+
+# old model data
+cfb_data_old = read.csv(gzfile("cfb_model_data_prep_full_check.csv.gz"))
+# get rid of cols not in new data
+cfb_data_old = select(-c(grep("rol_off", names(cfb_data_old)), grep("rol_def", names(cfb_data_old))))
+
+# combine the two
+cfb_data = rbind(cfb_data_old, cfb_data_this_week)
 
 
 ```
@@ -48,9 +56,11 @@ cfb_data = read.csv(gzfile("cfb_model_data_prep_full_check.csv.gz"))
 
 # Pre-processing
 
-# current weeks, useful for later predicting this week's games
-current_week = 24
-current_season = 2024
+# current week/season
+current_week = max(cfb_data_this_week$week)
+current_season = max(cfb_data_this_week$season)
+# CANGE THIS IF YOURE RUNNING FOR MULTIPLE WEEKS
+wk_range = c(current_week)
 
 
 # df with only rows with both fbs team (fcs data incomplete, easier to exclude these)
@@ -185,11 +195,12 @@ params_tune = list(eta = .065,
               eval_metric = "error")
 
 # the cp model
-cp_model = model_func("actual_t1_cover", model_prepped_omit, 6, 2024, 23, 2015, 1, params, params_tune)
+cp_model = model_func("actual_t1_cover", model_prepped_omit, 6, current_season, wk_range, params, params_tune)
 
 
 # write out
-write.csv(cp_model, "cp_model_21to24.csv")
+write.csv(cp_model, "cp_model_most_recent.csv")
+write.csv(cp_model, paste0("results_saves/cp_model", current_season, min(wk_range), "to", max(wk_range), ".csv"))
 #cp_model = read.csv("cp_model_21to24.csv")
 
 
@@ -237,7 +248,7 @@ pred_dat_final_cp = pred_dat_final_cp %>%
 
 
 # write out
-write.csv(pred_dat_final_cp, "pred_dat_final_cp_21to24.csv")
+write.csv(pred_dat_final_cp, "pred_dat_final_cp_most_recent.csv")
 
 
 ```
@@ -286,10 +297,11 @@ params_tune = list(eta = .06,
               eval_metric = "error")
 
 # the wp model
-wp_model = model_func("t1_win", model_prepped_omit, 6, 2024, 23, 2015, 1, params, params_tune)
+wp_model = model_func("t1_win", model_prepped_omit, 6, current_season, wk_range, params, params_tune)
 
 # write out
-write.csv(wp_model, "wp_model_21to24.csv")
+write.csv(wp_model, "wp_model_most_recent.csv")
+write.csv(wp_model, paste0("results_saves/wp_model", current_season, min(wk_range), "to", max(wk_range), ".csv"))
 
 ```
 
@@ -332,7 +344,7 @@ pred_dat_final_wp = pred_dat_final_wp %>%
 
 
 # write out
-write.csv(pred_dat_final_wp, "pred_dat_final_wp_21to24.csv")
+write.csv(pred_dat_final_wp, "pred_dat_final_wp_most_recent.csv")
 
 
 ```
@@ -385,10 +397,11 @@ params_tune = list(
               eval_metric = "error")
 
 # the wp model
-op_model = model_func("actual_over", model_prepped_omit, 6, 2024, 23, 2015, 1, parameters, params_tune)
+op_model = model_func("actual_over", model_prepped_omit, 6, current_season, wk_range, parameters, params_tune)
 
 # write out
-write.csv(op_model, "op_model_21to24.csv")
+write.csv(op_model, "op_model_most_recent.csv")
+write.csv(op_model, paste0("results_saves/op_model", current_season, min(wk_range), "to", max(wk_range), ".csv"))
 
 
 ```
@@ -429,7 +442,7 @@ pred_dat_final_op = pred_dat_final_op %>%
 
 
 # write out
-write.csv(pred_dat_final_op, "pred_dat_final_op_21to24.csv")
+write.csv(pred_dat_final_op, "pred_dat_final_op_most_recent.csv")
 
 
 ```
@@ -444,9 +457,9 @@ write.csv(pred_dat_final_op, "pred_dat_final_op_21to24.csv")
 
 ```{r}
 # read in preds dfs
-pred_dat_final_cp = read.csv("pred_dat_final_cp_21to24.csv")[,-1]
-pred_dat_final_op = read.csv("pred_dat_final_op_21to24.csv")[,-1]
-pred_dat_final_wp = read.csv("pred_dat_final_wp_21to24.csv")[,-1]
+pred_dat_final_cp = read.csv("pred_dat_final_cp_most_recent.csv")[,-1]
+pred_dat_final_op = read.csv("pred_dat_final_op_most_recent.csv")[,-1]
+pred_dat_final_wp = read.csv("pred_dat_final_wp_most_recent.csv")[,-1]
 
 
 # select cols to add back
@@ -510,8 +523,8 @@ pred_dat_final_all  = pred_dat_final_all %>% filter(t1_home | (neutral_site == 1
 
 ```{r}
 
-
-winnings_calc = pred_dat_final_all  %>% 
+# get rid of current week, wont have game results bc hasnt played yet
+winnings_calc = pred_dat_final_all  %>% filter(week!=current_week) %>% 
   
   
   ### SPREAD
@@ -619,34 +632,30 @@ winnings_calc = pred_dat_final_all  %>%
 # Write out
 
 ```{r}
+# save out most just this iteration
+write.csv(winnings_calc, paste0("winnings_calc_saves/winnings_calc", current_season, min(wk_range), "to", max(wk_range), ".csv"))
+```
 
-#write.csv(winnings_calc, "winnings_calc_21to24")
+
+```{r}
+
+# bring in current winning calc
+winnings_calc_current = read.csv("winnings_calc_current.csv") %>% 
+  filter(season != current_season & !(week %in% wk_range))
+
+# rbind this week's
+winnings_calc_final = rbind(winnings_calc_current, winnings_calc)
 
 ```
 
 
 ```{r}
 
-# # mark season ids  for saved df
-# mark = winnings_calc %>% arrange(season, week) %>% mutate(order = row_number())
-# mark_min_week = mark[1,]$week
-# mark_min_season = mark[1,]$season
-# mark_max_week = mark[dim(mark)[1],]$week
-# mark_max_season = mark[dim(mark)[1],]$season
-
-
-
-# # read in old predictions and bind w new
-# old_predictions = read.csv("final_prediction_df.csv")
-# winnings_calc_fin = bind_rows(old_predictions, winnings_calc)
-# 
-# 
-# # save final df and these specific predictions in case screw up
-#write.csv(winnings_calc, "maybe_final_preds.csv")
-# write.csv(winnings_calc, paste0("winnings_calc_saved_dfs/prediction", mark_min_season, mark_min_week, "to", mark_max_season, mark_max_week, ".csv"))
-
+# write out new winnings calc current
+write.csv(winnings_calc_final, "winnings_calc_current")
 
 ```
+
 
 
 ### Find winning values overall
@@ -966,6 +975,9 @@ write.csv(theor_agg, "theoretical_agg.csv")
 
 # prepped data for game predictor
 write.csv(pred_dat_final_theor, "theor_prepped.csv")
+
+# save this weeks prankings to backup folder
+write.csv(theor_agg, paste0("prankings_saves/theor_agg_", current_season, current_week, ".csv"))
 
 ```
 
