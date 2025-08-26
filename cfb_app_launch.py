@@ -226,6 +226,70 @@ def make_merged_predictions(data):
         merged_predictions = merged_predictions.rename(columns = {"color":"away_color", "logo": "away_logo"})
         merged_predictions = merged_predictions.drop(["school"], axis = 1)
 
+
+
+        def interpolate_from_buckets(bin_edges, bucket_vals, x, moneyline=False):
+            """
+            Interpolation from bucketed values.
+            
+            Parameters
+            ----------
+            bin_edges : array-like, length K+1
+                Bucket edges (numeric, increasing).
+            bucket_vals : array-like, length K
+                Value associated with each bucket.
+            x : scalar or array-like
+                Query points to interpolate.
+            moneyline : bool, default False
+                If True, return NaN for x <= 0.
+            
+            Returns
+            -------
+            numpy.ndarray of interpolated values (same length as x)
+            """
+            bin_edges = np.asarray(bin_edges, dtype=float)
+            bucket_vals = np.asarray(bucket_vals, dtype=float)
+            x = np.atleast_1d(x).astype(float)
+            
+            # Midpoints of buckets
+            mids = (bin_edges[:-1] + bin_edges[1:]) / 2.0
+            
+            # Interpolation: linear between mids
+            out = np.interp(x, mids, bucket_vals, 
+                            left=bucket_vals[0], right=bucket_vals[-1])
+            
+            # Apply moneyline rule
+            if moneyline:
+                out[x <= 0] = np.nan
+            
+            # Handle NaN in inputs
+            out[np.isnan(x)] = np.nan
+            
+            return out
+        
+
+        # Spread interpolation
+        spread_edges = [0, 1, 2, 3, 8, 15]
+        spread_vals  = [-4, -2.5, 3, 6, 8]
+
+        merged_predictions["Spread Exp Return"] = interpolate_from_buckets(
+            spread_edges, spread_vals, merged_predictions["Spread Value"].values
+        )
+        merged_predictions["Spread Exp Return"] = round(merged_predictions["Spread Exp Return"],2)
+
+        # Moneyline interpolation
+        ml_edges = [0, 1, 2, 3, 4, 6, 9, 15, 20]
+        ml_vals  = [-5, .5, 2, 7, 8, 9, 10, 12]  
+
+        merged_predictions["ML Exp Return"] = interpolate_from_buckets(
+            ml_edges, ml_vals, merged_predictions["ML Value"].values, moneyline=True
+        )
+        merged_predictions["ML Exp Return"] = round(merged_predictions["ML Exp Return"],2)
+
+
+
+
+
         # final df with cleaner names
         merged_predictions = merged_predictions.rename(columns={
             "t1_book_spread": "Book Home Spread",
@@ -1850,7 +1914,7 @@ def this_week_page():
         if hasattr(st, "rerun"):
             st.rerun()
         else:
-            st.experimental_rerun()
+            _rerun()
 
     def save_new_spread():
         raw = (st.session_state.get("new_spread_raw", "") or "").strip()
@@ -3184,7 +3248,201 @@ def this_week_page():
 
     st.write("Double check the lines listed for each game. If your book is different than what's shown, you can input your own customized lines in the single-game view")    
 
-    st.write("For more information on model accuracy, navigate to the 'Betting Accuracy' page")          
+    st.write("For more information on model accuracy, navigate to the 'Betting Accuracy' page")      
+
+
+
+
+
+
+
+def bet_builder_page():
+    st.title("Bet Builder")
+
+    # ---- Build unified bets table from merged_predictions ----
+    bb_spread_df = (
+        merged_predictions[["Home", "Away", "Spread Bet on:", "Spread Value", "Spread Exp Return", "Book Home Spread"]]
+        .rename(columns={"Spread Bet on:": "Bet on:", "Spread Value": "Value", "Spread Exp Return": "Exp Return"})
+    )
+    bb_spread_df["Type"] = "Spread"
+    bb_spread_df.loc[bb_spread_df["Bet on:"] == bb_spread_df["Home"], "Line"] = bb_spread_df.loc[bb_spread_df["Bet on:"] == bb_spread_df["Home"], "Book Home Spread"]
+    bb_spread_df.loc[bb_spread_df["Bet on:"] == bb_spread_df["Away"], "Line"] = bb_spread_df.loc[bb_spread_df["Bet on:"] == bb_spread_df["Away"], "Book Home Spread"]*-1
+    bb_spread_df["Line"] = bb_spread_df["Line"].apply(lambda x: f"{x:+.1f}")
+    bb_spread_df = bb_spread_df[["Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return"]]
+
+    bb_ml_df = (
+        merged_predictions[["Home", "Away", "ML Bet on:", "ML Value", "ML Exp Return", "Book Home Moneyline", "Book Away Moneyline"]]
+        .rename(columns={"ML Bet on:": "Bet on:", "ML Value": "Value", "ML Exp Return": "Exp Return"})
+    )
+    bb_ml_df["Type"] = "ML"
+    bb_ml_df.loc[bb_ml_df["Bet on:"] == bb_ml_df["Home"], "Line"] = bb_ml_df.loc[bb_ml_df["Bet on:"] == bb_ml_df["Home"], "Book Home Moneyline"]
+    bb_ml_df.loc[bb_ml_df["Bet on:"] == bb_ml_df["Away"], "Line"] = bb_ml_df.loc[bb_ml_df["Bet on:"] == bb_ml_df["Away"], "Book Away Moneyline"]
+    bb_ml_df["Line"] = bb_ml_df["Line"].apply(lambda x: f"{x:+.0f}")
+    bb_ml_df = bb_ml_df[["Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return"]]
+
+    bb_all_df = (
+        pd.concat([bb_spread_df, bb_ml_df], axis=0, ignore_index=True)
+        .sort_values(by="Exp Return", ascending=False)
+    )
+
+    # Stable ID
+    base_df = bb_all_df.reset_index(drop=False).rename(columns={"index": "row_id"})
+
+    # ---- One-time init of session state ----
+    if "pool" not in st.session_state:
+        df = base_df.copy()
+        df["pick"] = False
+        st.session_state.pool = df
+
+    if "chosen" not in st.session_state:
+        st.session_state.chosen = pd.DataFrame(
+            columns=["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return", "remove"]
+        )
+
+    # ---- Type filter (affects only Available/left) ----
+    type_options = sorted(base_df["Type"].dropna().unique().tolist(), reverse=True)
+    default_type = "Spread" if "Spread" in type_options else type_options[0]
+
+    # Seed once; then let the widget key own the value (NO index argument)
+    if "type_radio" not in st.session_state:
+        st.session_state.type_radio = default_type
+
+    
+    
+    st.markdown("### Available")
+
+    current_type = st.radio(
+        "",
+        options=type_options,
+        key="type_radio",
+        horizontal=True,
+    )
+
+
+
+
+    # ---- Column configs ----
+    pool_col_config = {
+        "row_id": st.column_config.Column("ID", width="small", disabled=True),
+        "Home": st.column_config.TextColumn("Home", help="Home team"),
+        "Away": st.column_config.TextColumn("Away", help="Away team"),
+        "Type": st.column_config.TextColumn("Type", help="Spread or ML"),
+        "Bet on:": st.column_config.TextColumn("Bet on", help="Which side"),
+        "Line": st.column_config.TextColumn("Line", help="Line"),
+        "Value": st.column_config.NumberColumn("Value"),
+        "Exp Return": st.column_config.NumberColumn("Exp Return", help="Expected return"),
+        "pick": st.column_config.CheckboxColumn("Pick", help="Select rows to add"),
+    }
+    chosen_col_config = {
+        "row_id": st.column_config.Column("ID", width="small", disabled=True),
+        "Home": st.column_config.TextColumn("Home"),
+        "Away": st.column_config.TextColumn("Away"),
+        "Type": st.column_config.TextColumn("Type"),
+        "Bet on:": st.column_config.TextColumn("Bet on"),
+        "Line": st.column_config.TextColumn("Line", help="Line"),
+        "Value": st.column_config.NumberColumn("Value"),
+        "Exp Return": st.column_config.NumberColumn("Exp Return"),
+        "remove": st.column_config.CheckboxColumn("Remove", help="Move back to Available"),
+    }
+
+    # ---- Available (left, filtered by Type) ----
+
+    pool_mask = st.session_state.pool["Type"] == current_type
+    pool_view = (
+        st.session_state.pool.loc[
+            pool_mask, ["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return", "pick"]
+        ]
+        .copy()
+        .sort_values(by="Exp Return", ascending=False)
+    )
+
+    edited_pool = st.data_editor(
+        pool_view,
+        key="pool_editor",
+        hide_index=True,
+        use_container_width=True,
+        column_config=pool_col_config,
+        disabled=["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return"],  # only checkbox editable
+    )
+
+    if st.button("➜ Add selected to Selected"):
+        move_mask = edited_pool["pick"] == True
+        to_move = edited_pool.loc[
+            move_mask, ["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return"]
+        ].copy()
+
+        if not to_move.empty:
+            to_move["remove"] = False
+
+            # Right table (dedupe)
+            st.session_state.chosen = (
+                pd.concat([st.session_state.chosen, to_move], ignore_index=True)
+                .drop_duplicates(subset=["row_id"], keep="first")
+            )
+
+            # Remove from full pool by row_id; clear picks
+            remaining_full_pool = st.session_state.pool[
+                ~st.session_state.pool["row_id"].isin(to_move["row_id"])
+            ].copy()
+            remaining_full_pool["pick"] = False
+            st.session_state.pool = remaining_full_pool.sort_values(by="Exp Return", ascending=False)
+
+            st.rerun()
+
+    # ---- Selected (right) ----
+    st.markdown("### Chosen Bets")
+    chosen_view = st.session_state.chosen[
+        ["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return", "remove"]
+    ].copy()
+
+    edited_chosen = st.data_editor(
+        chosen_view,
+        key="chosen_editor",
+        hide_index=True,
+        use_container_width=True,
+        column_config=chosen_col_config,
+        disabled=["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return"],  # only checkbox editable
+    )
+
+    if st.button("⬅ Remove checked back to Available"):
+        back_mask = edited_chosen["remove"] == True
+        to_back = edited_chosen.loc[
+            back_mask, ["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return"]
+        ].copy()
+
+        if not to_back.empty:
+            to_back["pick"] = False
+
+            st.session_state.pool = (
+                pd.concat([st.session_state.pool, to_back], ignore_index=True)
+                .drop_duplicates(subset=["row_id"], keep="first")
+                .sort_values(by="Exp Return", ascending=False)
+            )
+
+            st.session_state.chosen = edited_chosen.loc[
+                ~back_mask, ["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return", "remove"]
+            ].copy()
+
+            st.rerun()
+
+    if st.button("🔄 Reset to original", help="Restore Available from current data and clear Selected"):
+        st.session_state.pool = base_df.assign(pick=False).copy()
+        st.session_state.chosen = st.session_state.chosen.iloc[0:0].copy()
+        # Keep current_type as user set; do NOT touch st.session_state.type_radio
+        st.rerun()
+
+    # ---- Summary ----
+    if not st.session_state.chosen.empty:
+        st.divider()
+        st.markdown("### Expcted Portfolio Results")
+        total_rows = len(st.session_state.chosen)
+        total_exp_return = round(st.session_state.chosen["Exp Return"].sum(min_count=1),2)
+        st.write(f"**Picks:** {total_rows}")
+        st.write(f"**Sum of Expected Return:** {total_exp_return:.4f}")
+
+
+
+
 
 
         
@@ -3198,7 +3456,7 @@ def this_week_page():
     
 # Sidebar navigation
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ("This Week's Picks", "The Czar Poll", "The Playoff", "Game Predictor", "Betting Accuracy", "About"))
+page = st.sidebar.radio("Go to", ("This Week's Picks", "Bet Builder", "The Czar Poll", "The Playoff", "Game Predictor", "Betting Accuracy", "About"))
 
 
 
@@ -3216,3 +3474,5 @@ elif page == "The Czar Poll":
     power_rankings_page() 
 elif page == "This Week's Picks":
     this_week_page()    
+elif page == "Bet Builder":
+    bet_builder_page()

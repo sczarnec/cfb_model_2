@@ -38,7 +38,7 @@ source("cfb_app_helpers.R")
 ```{r, warning=FALSE}
 
 # model data
-cfb_data = read.csv(gzfile("cfb_model_data_prep_full_check.csv.gz"))
+cfb_data = read.csv(gzfile("prepped_data_21to24.csv.gz"))
 
 
 ```
@@ -616,11 +616,13 @@ winnings_calc = pred_dat_final_all  %>%
 
 
 
+
+
 # Write out
 
 ```{r}
 
-#write.csv(winnings_calc, "winnings_calc_21to24")
+write.csv(winnings_calc, "winnings_calc_21to24")
 
 ```
 

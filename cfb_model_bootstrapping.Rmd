@@ -25,9 +25,8 @@ library(scales)
 
 
 ```{r}
-winnings_calc = read.csv("test_this.csv")
+winnings_calc = read.csv("winnings_calc_21to24")
 
-winnings_calc2 = read.csv("final_prediction_df_21to24.csv")
 ```
 
 
@@ -374,209 +373,6 @@ ggplot(plot_df, aes(x = season, y = mean, fill = n)) +
 
 ```
 
-```{r}
-
-
-
-# df should have: confidence, n, mean, lower_bound, upper_bound
-plot_df <- spread_conf_df %>%
-  arrange(confidence) %>%
-  mutate(
-    conf_lab = percent(confidence, accuracy = 0.1),
-    conf_fac = factor(conf_lab, levels = unique(conf_lab))
-  )
-
-ggplot(plot_df, aes(x = conf_fac, y = mean, fill = n)) +
-  geom_col(width = 0.8, color = "grey30") +
-  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound),
-                width = 0.2, color = "grey20", linewidth = 0.6) +
-  geom_hline(yintercept = -.0455, 
-             linetype = "dashed", color = "gray", linewidth = 0.7) +
-  geom_hline(yintercept = 0,
-           color = "black", 
-           linewidth = .05) +
-    annotate("text", x = 7, y = -.067, 
-           label = "Average Bettor",
-           color = "gray", hjust = 0, vjust = -0.5, fontface = "bold") +
-  scale_fill_gradient(
-    name = "sample size",
-    low = "#DEEBF7",   # dark blue
-    high = "#08306B"   # light blue
-  ) +
-  scale_y_continuous(labels = number_format(accuracy = 0.01), limits = c(-.10, .2), 
-                     breaks = seq(-0.10, 0.20, by = 0.10), minor_breaks = seq(-0.10, 0.20, by = 0.05), expand = expansion(mult = c(0.02, 0.05))) +
-  labs(
-    title = "Mean Spread Return by Cover Prediction",
-    subtitle = "Bootstrapped mean with 95% confidence interval",
-    x = "Min Cover probability above 50%",
-    y = "Mean return"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor = element_blank(),
-    plot.title = element_text(face = "bold", size = 14),
-    plot.subtitle = element_text(color = "grey35"),
-    panel.grid.minor.y = element_line(color = "grey85", linewidth = 0.3),
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    legend.position = "right",
-    panel.background = element_rect(fill = "white", color = NA)
-  )
-
-
-
-
-
-
-
-
-
-# df should have: confidence, n, mean, lower_bound, upper_bound
-plot_df <- spread_seas_df %>%
-  arrange(season) 
-
-ggplot(plot_df, aes(x = season, y = mean, fill = n)) +
-  geom_col(width = 0.8, color = "grey30") +
-  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound),
-                width = 0.2, color = "grey20", linewidth = 0.6) +
-  geom_hline(yintercept = -.0455, 
-           linetype = "dashed", color = "gray", linewidth = 0.7) +
-  geom_hline(yintercept = 0,
-           color = "black", 
-           linewidth = .05) +
-  annotate("text", x = 2023.65, y = -.067,
-         label = "Average Bettor",
-         color = "gray", hjust = 0, vjust = -0.5, fontface = "bold") +
-  scale_fill_gradient(
-    name = "sample size",
-    low = "#DEEBF7",   # dark blue
-    high = "#08306B"   # light blue
-  ) +
-  scale_y_continuous(labels = number_format(accuracy = 0.01), limits = c(-.10, .15),
-                     expand = expansion(mult = c(0.02, 0.05))) +
-  labs(
-    title = "Mean Spread Return by Season",
-    subtitle = "Bootstrapped mean with 95% confidence interval",
-    x = "Season",
-    y = "Mean return"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor = element_blank(),
-    plot.title = element_text(face = "bold", size = 14),
-    plot.subtitle = element_text(color = "grey35"),
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    legend.position = "right",
-    panel.background = element_rect(fill = "white", color = NA)
-  )
-
-```
-
-
-
-```{r}
-
-
-
-# df should have: confidence, n, mean, lower_bound, upper_bound
-plot_df <- ml_conf_df %>%
-  arrange(confidence) %>%
-  mutate(
-    conf_lab = percent(confidence, accuracy = 0.1),
-    conf_fac = factor(conf_lab, levels = unique(conf_lab))
-  )
-
-ggplot(plot_df, aes(x = conf_fac, y = mean, fill = n)) +
-  geom_col(width = 0.8, color = "grey30") +
-  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound),
-                width = 0.2, color = "grey20", linewidth = 0.6) +
-  geom_hline(yintercept = -.0455, 
-             linetype = "dashed", color = "gray", linewidth = 0.7) +
-  geom_hline(yintercept = 0,
-           color = "black", 
-           linewidth = .05) +
-    annotate("text", x = 7, y = -.08, 
-           label = "Average Bettor",
-           color = "gray", hjust = 0, vjust = -0.5, fontface = "bold") +
-  scale_fill_gradient(
-    name = "sample size",
-    low = "#DEEBF7",   # dark blue
-    high = "#08306B"   # light blue
-  ) +
-  scale_y_continuous(labels = number_format(accuracy = 0.01), limits = c(-.10, .40), 
-                     breaks = seq(-0.10, 0.40, by = 0.10), minor_breaks = seq(-0.10, 0.40, by = 0.05), expand = expansion(mult = c(0.02, 0.05))) +
-  labs(
-    title = "Mean Moneyline Return by Value",
-    subtitle = "Bootstrapped mean with 95% confidence interval",
-    x = "Min predicted Win prob vs sportsbook",
-    y = "Mean return"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor = element_blank(),
-    plot.title = element_text(face = "bold", size = 14),
-    plot.subtitle = element_text(color = "grey35"),
-    panel.grid.minor.y = element_line(color = "grey85", linewidth = 0.3),
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    legend.position = "right",
-    panel.background = element_rect(fill = "white", color = NA)
-  )
-
-
-
-
-
-
-
-
-
-# df should have: confidence, n, mean, lower_bound, upper_bound
-plot_df <- ml_seas_df %>%
-  arrange(season) 
-
-ggplot(plot_df, aes(x = season, y = mean, fill = n)) +
-  geom_col(width = 0.8, color = "grey30") +
-  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound),
-                width = 0.2, color = "grey20", linewidth = 0.6) +
-  geom_hline(yintercept = -.0455, 
-           linetype = "dashed", color = "gray", linewidth = 0.7) +
-  geom_hline(yintercept = 0,
-           color = "black", 
-           linewidth = .05) +
-  annotate("text", x = 2023.65, y = -.08,
-         label = "Average Bettor",
-         color = "gray", hjust = 0, vjust = -0.5, fontface = "bold") +
-  scale_fill_gradient(
-    name = "sample size",
-    low = "#DEEBF7",   # dark blue
-    high = "#08306B"   # light blue
-  ) +
-  scale_y_continuous(labels = number_format(accuracy = 0.01), limits = c(-.10, .4),
-                     expand = expansion(mult = c(0.02, 0.05))) +
-  labs(
-    title = "Mean Moneyline Return by Season",
-    subtitle = "Bootstrapped mean with 95% confidence interval",
-    x = "Season",
-    y = "Mean return"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor = element_blank(),
-    plot.title = element_text(face = "bold", size = 14),
-    plot.subtitle = element_text(color = "grey35"),
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    legend.position = "right",
-    panel.background = element_rect(fill = "white", color = NA)
-  )
-
-```
-
-
-
-
 
 
 
@@ -679,6 +475,15 @@ ggplot(plot_df, aes(x = season, y = mean, fill = n)) +
   )
 
 ```
+
+
+
+
+
+
+
+
+
 
 
 ```{r}
@@ -779,3 +584,157 @@ ggplot(plot_df, aes(x = season, y = mean, fill = n)) +
   )
 
 ```
+
+
+
+
+
+
+
+
+## Buckets
+
+
+```{r}
+
+bucketed_wc_spread = winnings_calc %>% 
+  mutate(cover_conf_bucket = ifelse(cover_confidence>0&cover_confidence<=.01,1,ifelse(
+                            cover_confidence<=.02, 2, ifelse(
+                            cover_confidence<=.03,3,ifelse(
+                            cover_confidence<=.08,4,5
+                            )
+                            )
+                            
+                            )
+  ))
+
+
+agg_wc_spread = bucketed_wc_spread %>% 
+  group_by(cover_conf_bucket) %>% 
+  summarize(return = sum(spread_winnings)/n(),
+            n =n())
+
+print(agg_wc_spread)
+
+
+
+bucketed_wc_spread = winnings_calc %>% filter(season==2024) %>% 
+  mutate(cover_conf_bucket = ifelse(cover_confidence>0&cover_confidence<=.01,1,ifelse(
+                            cover_confidence<=.02, 2, ifelse(
+                            cover_confidence<=.03,3,ifelse(
+                            cover_confidence<=.08,4,5
+                            )
+                            )
+                            
+                            )
+  ))
+
+
+agg_wc_spread = bucketed_wc_spread %>%
+  group_by(cover_conf_bucket) %>%
+  summarize(return = sum(spread_winnings)/n(),
+            n =n())
+
+print(agg_wc_spread)
+```
+
+```{r}
+bucketed_wc_ml = winnings_calc %>% filter(!is.na(ml_winnings)) %>% 
+  mutate(ml_value_bucket = ifelse(ml_value>0&ml_value<=.01,1,ifelse(
+                            ml_value<=.02, 2, ifelse(
+                            ml_value<=.03,3,ifelse(
+                            ml_value<=.04,4,ifelse(
+                            ml_value<=.06,5,ifelse(
+                            ml_value<=.09,6,7)
+                            )
+                            )
+                            
+                            )
+                            
+                            
+                            
+                            )
+  ))
+
+agg_wc_ml = bucketed_wc_ml %>% 
+  group_by(ml_value_bucket) %>% 
+  summarize(return = sum(ml_winnings)/n(),
+            n =n())
+
+print(agg_wc_ml)
+
+
+
+
+bucketed_wc_ml = winnings_calc %>% filter(!is.na(ml_winnings)) %>% filter(season==2024) %>% 
+  mutate(ml_value_bucket = ifelse(ml_value>0&ml_value<=.01,1,ifelse(
+                            ml_value<=.02, 2, ifelse(
+                            ml_value<=.03,3,ifelse(
+                            ml_value<=.04,4,ifelse(
+                            ml_value<=.06,5,ifelse(
+                            ml_value<=.09,6,7)
+                            )
+                            )
+                            
+                            )
+                            
+                            
+                            
+                            )
+  ))
+
+agg_wc_ml = bucketed_wc_ml %>%
+  group_by(ml_value_bucket) %>%
+  summarize(return = sum(ml_winnings)/n(),
+            n =n())
+
+print(agg_wc_ml)
+```
+
+
+
+```{r}
+
+# Interpolation from bucketed values
+interpolate_from_buckets <- function(bin_edges, bucket_vals, x) {
+  # bin_edges: numeric vector length K+1
+  # bucket_vals: numeric vector length K
+  # x: scalar or numeric vector of query points
+  
+  # Midpoints of buckets
+  mids <- (head(bin_edges, -1) + tail(bin_edges, -1)) / 2
+  
+  # Use linear interpolation between midpoints
+  # rule = 2 means clamp outside range to nearest value
+  vec = c()
+  it=0
+  for (i in x){
+    it=it+1
+    s = approx(x = mids, y = bucket_vals, xout = i,
+           method = "linear", rule = 2)$y
+    
+    vec[it] = s
+  }
+  
+  return(vec)
+  
+  
+}
+
+# -------------------------------
+# Example
+edges <- c(0, .01, .02, .03, .08, .15)   # bucket edges
+vals  <- c(-.04, -.025, .03, .06, .08)             # bucket summaries
+
+
+winnings_calc$backtest_ER = interpolate_from_buckets(edges, vals, winnings_calc$cover_confidence)
+
+# [1] 13.2
+
+
+```
+
+
+
+
+
