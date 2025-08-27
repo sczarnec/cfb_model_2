@@ -645,7 +645,9 @@ bucketed_wc_ml = winnings_calc %>% filter(!is.na(ml_winnings)) %>%
                             ml_value<=.03,3,ifelse(
                             ml_value<=.04,4,ifelse(
                             ml_value<=.06,5,ifelse(
-                            ml_value<=.09,6,7)
+                            ml_value<=.09,6,ifelse(
+                            ml_value<.15,7,8
+                            ))
                             )
                             )
                             
@@ -672,7 +674,9 @@ bucketed_wc_ml = winnings_calc %>% filter(!is.na(ml_winnings)) %>% filter(season
                             ml_value<=.03,3,ifelse(
                             ml_value<=.04,4,ifelse(
                             ml_value<=.06,5,ifelse(
-                            ml_value<=.09,6,7)
+                            ml_value<=.09,6,ifelse(
+                            ml_value<.15,7,8
+                            ))
                             )
                             )
                             
@@ -696,7 +700,7 @@ print(agg_wc_ml)
 ```{r}
 
 # Interpolation from bucketed values
-interpolate_from_buckets <- function(bin_edges, bucket_vals, x) {
+interpolate_from_buckets <- function(bin_edges, bucket_vals, x, moneyline=FALSE) {
   # bin_edges: numeric vector length K+1
   # bucket_vals: numeric vector length K
   # x: scalar or numeric vector of query points
@@ -704,16 +708,22 @@ interpolate_from_buckets <- function(bin_edges, bucket_vals, x) {
   # Midpoints of buckets
   mids <- (head(bin_edges, -1) + tail(bin_edges, -1)) / 2
   
-  # Use linear interpolation between midpoints
-  # rule = 2 means clamp outside range to nearest value
+
   vec = c()
   it=0
   for (i in x){
-    it=it+1
-    s = approx(x = mids, y = bucket_vals, xout = i,
-           method = "linear", rule = 2)$y
     
-    vec[it] = s
+    if ((moneyline ==TRUE & i <= 0) | (is.na(i))){
+      it=it+1
+      vec[it] = NA
+      }
+    else{
+      it=it+1
+      s = approx(x = mids, y = bucket_vals, xout = i,
+             method = "linear", rule = 2)$y
+      
+      vec[it] = s
+    }
   }
   
   return(vec)
@@ -721,15 +731,18 @@ interpolate_from_buckets <- function(bin_edges, bucket_vals, x) {
   
 }
 
-# -------------------------------
-# Example
-edges <- c(0, .01, .02, .03, .08, .15)   # bucket edges
-vals  <- c(-.04, -.025, .03, .06, .08)             # bucket summaries
+
+spread_edges <- c(0, .01, .02, .03, .08, .15)
+spread_vals  <- c(-.04, -.025, .03, .06, .08)
+winnings_calc$backtest_spread_ER = interpolate_from_buckets(spread_edges, spread_vals, winnings_calc$cover_confidence)
 
 
-winnings_calc$backtest_ER = interpolate_from_buckets(edges, vals, winnings_calc$cover_confidence)
 
-# [1] 13.2
+ml_edges <- c(0, .01, .02, .03, .04, .06, .09, .15, .20)
+ml_vals  <- c(-.05, .005, .02, .07, .08, .9, .10,.12)
+winnings_calc$backtest_ml_ER = interpolate_from_buckets(ml_edges, ml_vals, winnings_calc$ml_value, TRUE)
+
+
 
 
 ```

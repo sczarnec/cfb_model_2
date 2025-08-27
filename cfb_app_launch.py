@@ -5,6 +5,8 @@ import csv
 import math
 import xgboost as xgb
 from streamlit_js_eval import streamlit_js_eval, get_user_agent
+import random
+import itertools
 
 
 st.set_page_config(layout="wide")
@@ -67,6 +69,16 @@ poll_rankings = pd.read_csv("this_week_ranks.csv", encoding="utf-8", sep=",", he
 # extract this week value
 this_week = theor_prepped['week'].max()
 
+
+
+# convert book ml to win prob, create some related cols
+def moneyline_to_winprob(ml):
+    if ml < 0:
+        # Negative moneyline (favorite)
+        return round(-ml / (-ml + 100), 4)
+    else:
+        # Positive moneyline (underdog)
+        return round(100 / (ml + 100), 4)
 
 
 
@@ -156,14 +168,7 @@ def make_merged_predictions(data):
 
         ## Moneyline
 
-        # convert book ml to win prob, create some related cols
-        def moneyline_to_winprob(ml):
-            if ml < 0:
-                # Negative moneyline (favorite)
-                return round(-ml / (-ml + 100), 4)
-            else:
-                # Positive moneyline (underdog)
-                return round(100 / (ml + 100), 4)
+
             
         merged_predictions["t1_ml_prob"] = merged_predictions["t1_moneyline"].apply(moneyline_to_winprob)
         merged_predictions["t2_ml_prob"] = merged_predictions["t2_moneyline"].apply(moneyline_to_winprob)
@@ -2080,13 +2085,13 @@ def this_week_page():
         
 
 
-                this_week_display_df = merged_predictions[["Home", "Away", "Spread Bet on:", "ML Bet on:", "O/U Bet on:", "Spread Value",
+                this_week_display_df = merged_predictions[["Home", "Away", "Spread Bet on:", "ML Bet on:", "O/U Bet on:", "Book Home Spread", "Book Home Moneyline", "Book Away Moneyline", "Book O/U", "Spread Value",
                     "ML Value", "O/U Value", "Home Conf", "Away Conf", "Neutral?"]].sort_values(by="Spread Value", ascending=False)
 
-                this_week_display_spread_df = merged_predictions[["Home", "Away", "Spread Bet on:", "Spread Value", "Pred Home Cover Prob", "Book Home Spread",
+                this_week_display_spread_df = merged_predictions[["Home", "Away", "Spread Bet on:", "Spread Value", "Book Home Spread", "Pred Home Cover Prob",
                                                                 "Home Conf", "Away Conf", "Neutral?"]].sort_values(by="Spread Value", ascending=False)
 
-                this_week_display_ml_df = merged_predictions[["Home", "Away", "ML Bet on:", "ML Value", "Pred Home Win Prob", "Book Home Win Prob", "Pred Away Win Prob", 
+                this_week_display_ml_df = merged_predictions[["Home", "Away", "ML Bet on:", "ML Value", "Book Home Moneyline", "Book Away Moneyline", "Pred Home Win Prob", "Book Home Win Prob", "Pred Away Win Prob", 
                                                             "Book Away Win Prob", "Home Conf", "Away Conf", "Neutral?"]].sort_values(by="ML Value", ascending=False)
 
                 this_week_display_ou_df = merged_predictions[["Home", "Away", "O/U Bet on:", "O/U Value", "Pred Over Prob", "Book O/U", "Home Conf", 
@@ -3256,8 +3261,34 @@ def this_week_page():
 
 
 
+
 def bet_builder_page():
     st.title("Bet Builder")
+
+
+    def exp_results_finder(data, unit_size):
+        calcs_df = data.copy()
+        calcs_df["Exp Profit"] = calcs_df["Units"] * calcs_df["Exp Return"]/100 * unit_size
+
+        calcs_df.loc[calcs_df["Type"]=="Spread", "odds"] = -110
+        calcs_df.loc[calcs_df["Type"]=="ML", "odds"] = (calcs_df["Line"].str.replace("+", "", regex=False).astype(float))
+        calcs_df.loc[calcs_df["odds"]<0, "potential_winnings"] = 100/abs(calcs_df.loc[calcs_df["odds"]<0, "odds"])
+        calcs_df.loc[calcs_df["odds"]>0, "potential_winnings"] = abs(calcs_df.loc[calcs_df["odds"]>0, "odds"])/100
+        calcs_df["potential_losses"] = 1
+        calcs_df["backtest_hit_prob"] = (calcs_df["Exp Return"]/100 + calcs_df["potential_losses"]) / (calcs_df["potential_winnings"] + calcs_df["potential_losses"])
+        calcs_df["per_bet_variance"] = ((calcs_df["Units"] * unit_size)**2*(calcs_df["backtest_hit_prob"]*calcs_df["potential_winnings"]**2+(1-calcs_df["backtest_hit_prob"])*calcs_df["potential_losses"]**2))-calcs_df["Exp Profit"]**2
+
+
+        total_rows = len(st.session_state.chosen)
+
+        total_exp_return = round(calcs_df["Exp Profit"].mean(),2)
+        total_exp_profit = round(calcs_df["Exp Profit"].sum(),2)
+        total_variance = round(calcs_df["per_bet_variance"].sum(),2)
+        total_stdev = math.sqrt(total_variance)
+        total_ci_lower = total_exp_profit - 1.96*total_stdev
+        total_ci_upper = total_exp_profit + 1.96*total_stdev
+
+        return total_rows, total_exp_return, total_exp_profit, total_variance, total_stdev, total_ci_lower, total_ci_upper
 
     # ---- Build unified bets table from merged_predictions ----
     bb_spread_df = (
@@ -3286,7 +3317,9 @@ def bet_builder_page():
     )
 
     # Stable ID
-    base_df = bb_all_df.reset_index(drop=False).rename(columns={"index": "row_id"})
+    #base_df = bb_all_df.reset_index(drop=False).rename(columns={"index": "row_id"})
+    base_df = bb_all_df.sort_values("Exp Return", ascending=False)
+    base_df = base_df.set_index(pd.RangeIndex(len(base_df))).reset_index(drop=False).rename(columns={"index": "row_id"})
 
     # ---- One-time init of session state ----
     if "pool" not in st.session_state:
@@ -3296,8 +3329,12 @@ def bet_builder_page():
 
     if "chosen" not in st.session_state:
         st.session_state.chosen = pd.DataFrame(
-            columns=["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return", "remove"]
+            columns=["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return", "Units", "remove"]
         )
+    # --- ensure Units column exists and is integer-like so the editor renders it properly ---
+    if "Units" not in st.session_state.chosen.columns:
+        st.session_state.chosen["Units"] = pd.Series(dtype="Int64")
+    st.session_state.chosen["Units"] = st.session_state.chosen["Units"].fillna(1).astype("Int64")
 
     # ---- Type filter (affects only Available/left) ----
     type_options = sorted(base_df["Type"].dropna().unique().tolist(), reverse=True)
@@ -3307,8 +3344,6 @@ def bet_builder_page():
     if "type_radio" not in st.session_state:
         st.session_state.type_radio = default_type
 
-    
-    
     st.markdown("### Available")
 
     current_type = st.radio(
@@ -3317,9 +3352,6 @@ def bet_builder_page():
         key="type_radio",
         horizontal=True,
     )
-
-
-
 
     # ---- Column configs ----
     pool_col_config = {
@@ -3333,6 +3365,14 @@ def bet_builder_page():
         "Exp Return": st.column_config.NumberColumn("Exp Return", help="Expected return"),
         "pick": st.column_config.CheckboxColumn("Pick", help="Select rows to add"),
     }
+
+    # fallback to NumberColumn if SelectboxColumn isn't available (older Streamlit)
+    UnitsCol = getattr(st.column_config, "SelectboxColumn", None)
+    if UnitsCol is None:
+        units_config = st.column_config.NumberColumn("Units", min_value=1, max_value=10, step=1, help="How many units to bet")
+    else:
+        units_config = st.column_config.SelectboxColumn("Units", options=[1, 2, 3, 4, 5], help="How many units to bet")
+
     chosen_col_config = {
         "row_id": st.column_config.Column("ID", width="small", disabled=True),
         "Home": st.column_config.TextColumn("Home"),
@@ -3342,11 +3382,11 @@ def bet_builder_page():
         "Line": st.column_config.TextColumn("Line", help="Line"),
         "Value": st.column_config.NumberColumn("Value"),
         "Exp Return": st.column_config.NumberColumn("Exp Return"),
+        "Units": units_config,  # <<< ensure Units is configured
         "remove": st.column_config.CheckboxColumn("Remove", help="Move back to Available"),
     }
 
     # ---- Available (left, filtered by Type) ----
-
     pool_mask = st.session_state.pool["Type"] == current_type
     pool_view = (
         st.session_state.pool.loc[
@@ -3372,6 +3412,7 @@ def bet_builder_page():
         ].copy()
 
         if not to_move.empty:
+            to_move["Units"] = 1           # <<< default Units for new picks
             to_move["remove"] = False
 
             # Right table (dedupe)
@@ -3392,7 +3433,7 @@ def bet_builder_page():
     # ---- Selected (right) ----
     st.markdown("### Chosen Bets")
     chosen_view = st.session_state.chosen[
-        ["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return", "remove"]
+        ["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return", "Units", "remove"]
     ].copy()
 
     edited_chosen = st.data_editor(
@@ -3400,8 +3441,10 @@ def bet_builder_page():
         key="chosen_editor",
         hide_index=True,
         use_container_width=True,
+        # lock order so Units is guaranteed visible before "remove"
+        column_order=["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return", "Units", "remove"],
         column_config=chosen_col_config,
-        disabled=["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return"],  # only checkbox editable
+        disabled=["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return"],  # Units & remove are editable
     )
 
     if st.button("⬅ Remove checked back to Available"):
@@ -3420,7 +3463,7 @@ def bet_builder_page():
             )
 
             st.session_state.chosen = edited_chosen.loc[
-                ~back_mask, ["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return", "remove"]
+                ~back_mask, ["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return", "Units", "remove"]
             ].copy()
 
             st.rerun()
@@ -3428,17 +3471,186 @@ def bet_builder_page():
     if st.button("🔄 Reset to original", help="Restore Available from current data and clear Selected"):
         st.session_state.pool = base_df.assign(pick=False).copy()
         st.session_state.chosen = st.session_state.chosen.iloc[0:0].copy()
+        st.session_state.show_optimizer = False
         # Keep current_type as user set; do NOT touch st.session_state.type_radio
         st.rerun()
+
+
+
+
+    breakdown_options = ["Total Portfolio Amount", "Unit Size"]
+    breadown_default = breakdown_options.index(st.session_state.breakdown_choice) if "breakdown_choice" in st.session_state else 0
+    st.session_state.breakdown_choice = st.selectbox(
+        "Choose to input a Total Portfolio Amount that will be split among units or a Per-Unit Bet size:", 
+        options=breakdown_options,  
+        index=breadown_default  
+            )
+    
+    
+    if st.session_state.breakdown_choice == "Total Portfolio Amount":
+
+        if "portfolio_amount" not in st.session_state:
+            st.session_state.portfolio_amount = st.text_input(
+                "Total size of portfolio ($):",
+                value=20
+            )   
+        else:         
+            st.session_state.portfolio_amount = st.text_input(
+                "Total size of portfolio ($):",
+                value=st.session_state.portfolio_amount
+            )
+        try:
+            portfolio_amount = float(st.session_state.portfolio_amount)
+        except:
+            st.session_state.portfolio_amount = 20
+            portfolio_amount = float(st.session_state.portfolio_amount)
+            st.write("Invalid amount, reset to $20")
+
+        if not st.session_state.chosen.empty:
+            unit_size = portfolio_amount / edited_chosen["Units"].sum()
+
+    if st.session_state.breakdown_choice == "Unit Size":
+
+        if "unit_size" not in st.session_state:
+            st.session_state.unit_size = st.text_input(
+                "Size of each bet unit ($):",
+                value=2
+            )
+        else:
+            st.session_state.unit_size = st.text_input(
+                "Size of each bet unit ($):",
+                value=st.session_state.unit_size
+            )
+        try:
+            unit_size = float(st.session_state.unit_size)
+        except:
+            st.session_state.unit_size = 2
+            unit_size = st.session_state.unit_size
+            st.write("Invalid amount, reset to $2")
+        if not st.session_state.chosen.empty:
+            portfolio_amount = unit_size * edited_chosen["Units"].sum()
+
+
+
+
+
+
+    if "show_optimizer" not in st.session_state:
+        st.session_state.show_optimizer = False
+    if st.button("Portfolio Optimizer"):
+        st.session_state.show_optimizer = not st.session_state.show_optimizer
+    if st.session_state.show_optimizer == True:
+        max_stdev = st.text_input(
+                "Maximum Standard Deviation:",
+                value=10
+            )
+        try:
+            max_stdev = float(max_stdev)
+        except:
+            max_stdev = 10
+            print("Invalid value, set to 10")
+
+        types_to_include = st.selectbox(
+            "Types to include", 
+            options=["All", "Spread only", "ML only"],  
+            index=0  
+                )
+        
+        random_param = st.slider("Randomness", min_value=0.0, max_value=.5, value=.2, step=.05)
+        random_param = float(random_param)
+        
+
+
+        if st.button("Run Optimizer"):
+
+            st.session_state.pool = base_df.assign(pick=False).copy()
+            st.session_state.chosen = st.session_state.chosen.iloc[0:0].copy()
+
+            # Keep current_type as user set; do NOT touch st.session_state.type_radio
+
+
+            def portfolio_optimizer():
+                opt_df = None
+                all_df = base_df.copy()
+                all_df["Units"] = 1
+
+                spr_ids = all_df.loc[all_df["Type"] == "Spread", "row_id"].tolist()
+                ml_ids = all_df.loc[all_df["Type"] == "ML", "row_id"].tolist()
+
+                if types_to_include == "All":
+                    combined_ids = [val for pair in itertools.zip_longest(spr_ids, ml_ids) for val in pair if val is not None]
+                if types_to_include == "Spread only":
+                    combined_ids = spr_ids
+                if types_to_include == "ML only":
+                    combined_ids = ml_ids
+
+                
+                for r in combined_ids:
+                    rand_num = random.random()
+                    if rand_num >= random_param:
+                        if opt_df is None:
+                            mask = all_df["row_id"].eq(r)          # safer than == for dtype issues
+                            opt_df = all_df.loc[mask].copy()
+                        else:
+                            mask = all_df["row_id"].eq(r)          # safer than == for dtype issues
+                            new_row = all_df.loc[mask].copy()
+                            opt_df = pd.concat([opt_df, new_row], axis=0)
+                        temp_unit_size = float(st.session_state.portfolio_amount) / opt_df["Units"].sum()
+                        total_rows, total_exp_return, total_exp_profit, total_variance, total_stdev, total_ci_lower, total_ci_upper = exp_results_finder(opt_df, temp_unit_size)
+                        if total_stdev < max_stdev:
+                            return opt_df, total_stdev
+                return opt_df, total_stdev
+
+            opt_df, total_stdev = portfolio_optimizer()
+            opt_ids = opt_df["row_id"]
+
+
+            to_move = st.session_state.pool.loc[
+                st.session_state.pool["row_id"].isin(opt_ids),
+                ["row_id", "Home", "Away", "Type", "Bet on:", "Line", "Value", "Exp Return"]
+            ].copy()
+
+            if not to_move.empty:
+                to_move["Units"] = 1
+                to_move["remove"] = False
+
+                # Update chosen (dedupe)
+                st.session_state.chosen = (
+                    pd.concat([st.session_state.chosen, to_move], ignore_index=True)
+                    .drop_duplicates(subset=["row_id"], keep="first")
+                )
+
+                # Remove from FULL pool by id; clear picks; keep sort
+                st.session_state.pool = (
+                    st.session_state.pool.loc[~st.session_state.pool["row_id"].isin(opt_ids)]
+                    .assign(pick=False)
+                    .sort_values(by="Exp Return", ascending=False)
+                    .copy()
+                )
+
+                st.rerun()
+
+
+
+                    
+
 
     # ---- Summary ----
     if not st.session_state.chosen.empty:
         st.divider()
-        st.markdown("### Expcted Portfolio Results")
-        total_rows = len(st.session_state.chosen)
-        total_exp_return = round(st.session_state.chosen["Exp Return"].sum(min_count=1),2)
-        st.write(f"**Picks:** {total_rows}")
-        st.write(f"**Sum of Expected Return:** {total_exp_return:.4f}")
+        st.markdown("### Expected Portfolio Results")
+
+
+
+        
+        total_rows, total_exp_return, total_exp_profit, total_variance, total_stdev, total_ci_lower, total_ci_upper = exp_results_finder(edited_chosen, unit_size)
+
+        st.write(f"Total Wagered: ${portfolio_amount}")
+        st.write(f"Unit Size: ${unit_size}")
+        st.write(f"Bet Count: {total_rows}")
+        st.write(f"Expected Profit: ${total_exp_profit}")
+        st.write(f"Standard Deviation: {round(total_stdev,2)}")
+        st.write(f"Profit 95% Confidence Interval: $ {round(total_ci_lower,2)}, {round(total_ci_upper,2)}")
 
 
 
