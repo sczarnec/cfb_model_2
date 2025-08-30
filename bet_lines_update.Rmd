@@ -1,0 +1,226 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-08-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(cfbfastR)
+```
+
+
+```{r}
+this_week = read.csv("model_prepped_this_week_test.csv")[,-1]
+```
+
+```{r}
+
+current_season = 2024
+current_week = 7
+
+
+
+
+# function to load
+load_gi_data_func = function(year_start, year_end) {
+  
+  # loop to load data
+  for (szn in c(year_start:year_end)){
+    # this one creates the df for the first year in the loop
+    if (szn == year_start){
+      full_df = cfbd_game_info(year = szn, season_type = "regular")
+      df = cfbd_game_info(year = szn, season_type = "postseason")
+      full_df = bind_rows(full_df, df)
+    # this one binds other dfs to full_df
+    } else{
+        df = cfbd_game_info(year = szn, season_type = "regular")
+        full_df = bind_rows(full_df, df)
+        df = cfbd_game_info(year = szn, season_type = "postseason")
+        full_df = bind_rows(full_df, df)
+  }
+  }
+  # return one df with all years of data
+  return(full_df)
+}
+
+
+
+
+# load in gbg data
+game_info_orig = load_gi_data_func(current_season, current_season)
+game_info = game_info_orig %>% 
+  # change weeks for postseason
+  mutate(week = ifelse(season_type == "regular", week, ifelse(
+         str_detect(notes, "Quarterfinal"), 21, ifelse(
+         str_detect(notes, "Semifinal") | str_detect(notes, "SEMIFINAL"), 22, ifelse(
+         str_detect(notes, "National Championship") | str_detect(notes, "NATIONAL CHAMPIONSHIP"), 23, 20
+         )
+         )
+  ))) %>% 
+  mutate(week = ifelse(game_id == 400852733, 22, ifelse(
+         game_id == 400852732, 22, ifelse(
+         game_id == 400876108, 22, ifelse(
+         game_id == 400876107, 22, week
+         )
+         )
+  ))) %>% 
+  mutate(week = ifelse(season_type == "postseason" & is.na(week), 20, week))
+
+
+
+
+
+
+load_bet_data_func = function(year_start, year_end, joining_data){
+  
+      full_df = cfbd_betting_lines(year = 2015, away_team = "Notre Dame")
+      full_df = full_df[0,]
+      full_df$over_under = as.numeric(full_df$over_under)
+      full_df$spread_open = as.numeric(full_df$spread_open)
+      full_df$over_under_open = as.numeric(full_df$over_under_open)
+      full_df$spread = as.numeric(full_df$spread)
+      
+      game_info_fbs = joining_data %>% 
+        filter(away_classification == "fbs" | away_classification == "fbs")
+      
+      for (szn in c(year_start:year_end)){
+        
+        print(szn)
+        
+        if (szn <= 2018){
+        
+            team_list_df = game_info_fbs %>% 
+              filter(season == szn)
+            team_list = unique(game_info_fbs$away_team)
+            
+            for (tm in team_list){
+              df = cfbd_betting_lines(year = szn, season_type = "regular", away_team = tm)
+              df$over_under = as.numeric(df$over_under)
+              df$spread_open = as.numeric(df$spread_open)
+              df$over_under_open = as.numeric(df$over_under_open)
+              df$spread = as.numeric(df$spread)
+              full_df = bind_rows(full_df, df)
+            
+            }
+            
+            for (tm in team_list){
+              df = cfbd_betting_lines(year = szn, season_type = "postseason", away_team = tm)
+              df$over_under = as.numeric(df$over_under)
+              df$spread_open = as.numeric(df$spread_open)
+              df$over_under_open = as.numeric(df$over_under_open)
+              df$spread = as.numeric(df$spread)
+              full_df = bind_rows(full_df, df)
+            
+            }
+        } 
+        else{
+          
+            df = cfbd_betting_lines(year = szn, season_type = "regular")
+            df$over_under = as.numeric(df$over_under)
+            df$spread_open = as.numeric(df$spread_open)
+            df$over_under_open = as.numeric(df$over_under_open)
+            df$spread = as.numeric(df$spread)
+            full_df = bind_rows(full_df, df)
+            
+            df = cfbd_betting_lines(year = szn, season_type = "postseason")
+            df$over_under = as.numeric(df$over_under)
+            df$spread_open = as.numeric(df$spread_open)
+            df$over_under_open = as.numeric(df$over_under_open)
+            df$spread = as.numeric(df$spread)
+            full_df = bind_rows(full_df, df)
+            
+            
+        }
+        
+  
+      }
+      
+      return(full_df)
+  
+  
+}
+
+
+# load in betting data
+bet_lines_current = load_bet_data_func(current_season, current_season, game_info) %>% filter(week == current_week)
+```
+
+```{r}
+
+provider_sort = c("consensus", "DraftKings", "ESPN Bet", "Caesars", "Caesars (Pennsylvania)", 
+                  "Caesars Sportsbook (Colorado)", "William Hill (New Jersey)", #moved ESPN Bet up from here for 2025 on
+                  "numberfire", "teamrankings", "Bovada", "SugarHouse")
+
+
+# data frame for spread, pick one of the books' spread
+full_df_sp = bet_lines_current %>% select(game_id, home_team, away_team, provider, spread) %>%  filter(!is.na(spread))%>% group_by(game_id) %>% arrange(match(provider, provider_sort)) %>% slice(1) %>% ungroup()%>% select(-provider)
+
+# data frame for over under, pick one of the books' over under
+full_df_ou = bet_lines_current %>%  select(game_id, provider, over_under) %>% filter(!is.na(over_under)) %>%group_by(game_id) %>% arrange(match(provider, provider_sort)) %>% slice(1) %>% ungroup() %>% select(-provider)
+
+# data frame for ml, pick one of the books' ml
+full_df_ml = bet_lines_current %>%  select(game_id, provider, home_moneyline, away_moneyline) %>% filter(!is.na(home_moneyline)) %>%group_by(game_id) %>% arrange(match(provider, provider_sort)) %>% slice(1) %>% ungroup() %>% select(-provider)
+
+
+# join the three data frames
+bet_lines_comb = left_join(full_df_sp, full_df_ou, by = c("game_id")) %>% left_join(full_df_ml, by = c("game_id")) %>% select(-c(game_id))
+
+
+#%>% select(home_team, away_team, spread, over_under, home_moneyline, away_moneyline)
+
+```
+
+
+```{r}
+
+bet_lines_current_home = bet_lines_comb %>% 
+  rename("t1_team" = "home_team",
+         "t2_team" = "away_team",
+         "t1_book_spread_newh" = "spread",
+         "book_over_under_newh" = "over_under",
+         "t1_moneyline_newh" = "home_moneyline",
+         "t2_moneyline_newh" = "away_moneyline")
+
+bet_lines_current_away = bet_lines_comb %>% 
+  rename("t1_team" = "away_team",
+         "t2_team" = "home_team",
+         "t1_book_spread_newa" = "spread",
+         "book_over_under_newa" = "over_under",
+         "t1_moneyline_newa" = "away_moneyline",
+         "t2_moneyline_newa" = "home_moneyline") %>% 
+  mutate(t1_book_spread_newa = t1_book_spread_newa*-1)
+
+```
+
+```{r}
+
+bet_lines_joined = this_week %>%
+  left_join(bet_lines_current_home, by = c("t1_team", "t2_team")) %>% 
+  left_join(bet_lines_current_away, by = c("t1_team", "t2_team")) %>% 
+  mutate(t1_book_spread = ifelse(is.na(t1_book_spread_newh), t1_book_spread_newa, t1_book_spread_newh),
+         book_over_under = ifelse(is.na(book_over_under_newh), book_over_under_newa, book_over_under_newh),
+         t1_moneyline = ifelse(is.na(t1_moneyline_newh), t1_moneyline_newa, t1_moneyline_newh),
+         t1_moneyline = ifelse(is.na(t2_moneyline_newh), t2_moneyline_newa, t1_moneyline_newh)) %>% 
+  select(-c(t1_book_spread_newh, t1_book_spread_newa, book_over_under_newh, book_over_under_newa, t1_moneyline_newh, t1_moneyline_newa, t2_moneyline_newh, t2_moneyline_newa))
+
+```
+
+
+
+```{r}
+write.csv.csv(bet_lines_joined, "model_prepped_this_week_test.csv")[,-1]
+```
+
+
+
+
+
+
+
+
+
