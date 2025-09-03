@@ -45,20 +45,20 @@ book_function = function(oc_var, test_data){
   train_matrix_v1_book = xgb.DMatrix(data = as.matrix(train_v1_book[,1:587]), 
                                      label = as.numeric(train_v1_book$oc_var))
   
-  train_matrix_v2_book = xgb.DMatrix(data = as.matrix(train_v2_book[,1:1251]), 
-                                     label = as.numeric(train_v2_book$oc_var))
+  # train_matrix_v2_book = xgb.DMatrix(data = as.matrix(train_v2_book[,1:1251]), 
+  #                                    label = as.numeric(train_v2_book$oc_var))
   
   
   new_params_book = c(parameters_book, data = train_matrix_v1_book)
   model_v1_book = do.call(xgboost, new_params_book)
   imp_mat_v1_book <- xgb.importance(model = model_v1_book)
   
-  new_params_book = c(parameters_book, data = train_matrix_v2_book)
-  model_v2_book = do.call(xgboost, new_params_book)
-  imp_mat_v2_book <- xgb.importance(model = model_v2_book)
+  # new_params_book = c(parameters_book, data = train_matrix_v2_book)
+  # model_v2_book = do.call(xgboost, new_params_book)
+  # imp_mat_v2_book <- xgb.importance(model = model_v2_book)
   
   
-  var_list_orig_book = unique(c(imp_mat_v1_book[1:100]$Feature, imp_mat_v2_book[1:100]$Feature))
+  var_list_orig_book = unique(c(imp_mat_v1_book[1:100]$Feature))
   list_matches_book = unname(sapply(var_list_orig_book, function(x) gsub("^t1", "t2", x)))
   var_list_final_book = unique(c(var_list_orig_book, list_matches_book))
   
@@ -362,6 +362,7 @@ model_func_single_year = function(oc_var, data, yr_length, real_yr, wk_range, pa
   max_week = max(week_range)
     
     
+  iter = 0
     
     
   # for each week, run the model with rolling window
@@ -381,6 +382,8 @@ model_func_single_year = function(oc_var, data, yr_length, real_yr, wk_range, pa
       filter((season == start_yr & week > current_wk) | (season > start_yr & season < current_yr) | (season == current_yr & week < current_wk))
     
     
+    
+    
     names(train)[grep(oc_var, names(train))] = "oc_var"
     
     
@@ -390,7 +393,10 @@ model_func_single_year = function(oc_var, data, yr_length, real_yr, wk_range, pa
       select(-c(grep("rol_off", names(train)), grep("rol_def", names(train))))
     
     # train_v2 = train %>%
-    #   select(-c(grep("off_l", names(train)), grep("def_l", names(train))))        
+    #   select(-c(grep("off_l", names(train)), grep("def_l", names(train))))   
+
+    
+
     
     train_matrix_v1 = xgb.DMatrix(data = as.matrix(train_v1[,1:589]), 
                                   label = as.numeric(train_v1$oc_var))
@@ -433,7 +439,7 @@ model_func_single_year = function(oc_var, data, yr_length, real_yr, wk_range, pa
     
     
     
-    
+
     
     # run actual model
     
@@ -450,7 +456,7 @@ model_func_single_year = function(oc_var, data, yr_length, real_yr, wk_range, pa
     
     
     
-    
+
     
     
     
@@ -462,15 +468,14 @@ model_func_single_year = function(oc_var, data, yr_length, real_yr, wk_range, pa
     names(test)[grep(oc_var, names(test))] = "oc_var"
     
     # Create training matrix
-    test_matrix = xgb.DMatrix(data = as.matrix(test[,1:num_predictors]), 
-                              label = as.numeric(test$oc_var))
+    test_matrix = xgb.DMatrix(data = as.matrix(test[,1:num_predictors]))
     
     
     # predictions
     preds = predict(model, test_matrix)
     new_df = cbind.data.frame(preds, oc_var = test$oc_var, game_id = test$game_id, t1_team = test$t1_team, t2_team = test$t2_team)
     
-    if (yr == initial_yr + yr_length & iter == 1){
+    if (iter == 1){
       pred_df = new_df
     } else{
       pred_df = bind_rows(pred_df, new_df)
@@ -481,10 +486,10 @@ model_func_single_year = function(oc_var, data, yr_length, real_yr, wk_range, pa
     xgb.save(model,fname = paste0("saved_models/", current_yr, wk, "_",  oc_var,"_model.model"))
     write.csv(var_list_final, paste0("saved_models/", current_yr, wk, "_", oc_var, "model_var_list.csv"))
     
-    if (real_wk == wk | real_yr == yr){ 
+    if (wk == max(wk_range)){ 
       
-      xgb.save(model, fname = paste0("most_recent_",  oc_var,"_model.model"))
-      write.csv(var_list_final, paste0("most_recent_", oc_var, "model_var_list.csv"))
+      xgb.save(model, fname = paste0("current_data/most_recent_",  oc_var,"_model.model"))
+      write.csv(var_list_final, paste0("current_data/most_recent_", oc_var, "model_var_list.csv"))
       
     }       
     

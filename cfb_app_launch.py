@@ -26,45 +26,45 @@ is_mobile = (width is not None and width < 768) or ("Mobi" in ua)
 ## GONNA HAVE TO CHANGE A LOT OF THESE ONCE AUTOMATED
 
 # Read in historical betting data
-historical_data = pd.read_csv("test_thisorig.csv", encoding="utf-8", sep=",", header=0)
+historical_data = pd.read_csv("current_data/winnings_calc_current.csv", encoding="utf-8", sep=",", header=0)
 
 
 # load theoretical data
-theor_prepped = pd.read_csv("theor_prepped_test.csv", encoding="utf-8", sep=",", header=0)
+theor_prepped = pd.read_csv("current_data/theor_prepped.csv", encoding="utf-8", sep=",", header=0)
 theor_prepped = theor_prepped.drop(theor_prepped.columns[0], axis=1)
-theor_agg = pd.read_csv("theoretical_agg_test.csv", encoding="utf-8", sep=",", header=0)
+theor_agg = pd.read_csv("current_data/theoretical_agg.csv", encoding="utf-8", sep=",", header=0)
 theor_agg = theor_agg.drop(theor_agg.columns[0], axis=1)
 
 # load  model
 cover_model = xgb.Booster()
-cover_model.load_model("test_app_saved_models/20247_actual_t1_cover_model.model")
+cover_model.load_model("current_data/most_recent_actual_t1_cover_model.model")
 # load point diff vars
-cover_vars = pd.read_csv("test_app_saved_models/20247_actual_t1_covermodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
+cover_vars = pd.read_csv("current_data/most_recent_actual_t1_covermodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
 cover_vars = cover_vars.astype(str).str.strip().tolist()
 
 
 # load win prob model
 wp_model = xgb.Booster()
-wp_model.load_model("test_app_saved_models/20247_t1_win_model.model")
+wp_model.load_model("current_data/most_recent_t1_win_model.model")
 # load point diff vars
-wp_vars = pd.read_csv("test_app_saved_models/20247_t1_winmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
+wp_vars = pd.read_csv("current_data\most_recent_t1_winmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
 wp_vars = wp_vars.astype(str).str.strip().tolist()
 
 # load over/under model
 over_model = xgb.Booster()
-over_model.load_model("test_app_saved_models/20247_actual_over_model.model")
+over_model.load_model("current_data/most_recent_actual_over_model.model")
 # load point diff vars
-over_vars = pd.read_csv("test_app_saved_models/20247_actual_overmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
+over_vars = pd.read_csv("current_data/most_recent_actual_overmodel_var_list.csv", encoding="utf-8", header=0).iloc[:, 1]
 over_vars = over_vars.astype(str).str.strip().tolist()
 
 # load this week's data for XGB
-sample_data = pd.read_csv("model_prepped_this_week_test.csv", encoding="utf-8", sep=",", header=0)
+sample_data = pd.read_csv("current_data/model_prepped_this_week.csv", encoding="utf-8", sep=",", header=0)
 
 # load team info data
-team_info = pd.read_csv("team_info.csv", encoding="utf-8", sep=",", header=0)
+team_info = pd.read_csv("current_data/team_info.csv", encoding="utf-8", sep=",", header=0)
 
 # load team info data
-poll_rankings = pd.read_csv("this_week_ranks.csv", encoding="utf-8", sep=",", header=0)
+poll_rankings = pd.read_csv("current_data/this_week_ranks.csv", encoding="utf-8", sep=",", header=0)
 
 # extract this week value
 this_week = theor_prepped['week'].max()
@@ -1027,6 +1027,9 @@ def historical_results_page():
 
     st.write(" ")
     st.write(" ")
+
+    st.divider()
+
     st.write("These returns are assuming you bet the same units for hundreds of games. If you use the model on one game, the return is either gonna be 0 or ~95%. If you bet on 100, it will look more like this projected reutrn. It's a sample size game: it won't get every game right but will be profitable over time.")
     st.write("Based on 2021-24 backtesting: the spread model is significantly profitable and increases profitability as confidence increases. The moneyline model is significantly profitable and increases profitability as value increases. The O/U model is not profitable.")
     st.write("'Confidence' represents (our predicted probability - 50%). For example, if a team has a 55% chance to cover, their cover confidence is 5%. Similarly, ML Value is a direct comparison of our predicted win " \
@@ -1079,7 +1082,7 @@ def playoff_page():
             index = unique_teams.index(value)
         except ValueError:
             # If the value is not found, use a fallback index (e.g., -1 or 0)
-            index = -1  # You can change this to 0 if you want a valid index
+            index = 30  # You can change this to 0 if you want a valid index
         seeds.append(index)
     
       
@@ -1806,7 +1809,7 @@ def game_predictor_page():
             index = team_list.index(value)
         except ValueError:
             # If the value is not found, use a fallback index (e.g., -1 or 0)
-            index = -1  # You can change this to 0 if you want a valid index
+            index = 30  # You can change this to 0 if you want a valid index
         top2_indices.append(index)
 
 
@@ -2269,6 +2272,8 @@ def this_week_page():
                     )    
 
                     filtered_df = merged_predictions.loc[merged_predictions["matchup"]==matchup_options]  
+                    filtered_df["Book Home Moneyline"] = filtered_df["Book Home Moneyline"].fillna(0)
+                    filtered_df["Book Away Moneyline"] = filtered_df["Book Away Moneyline"].fillna(0)
                     old_spread_val = filtered_df.iloc[0]["Book Home Spread"]
                     old_spread_upper = old_spread_val+4
                     old_spread_lower = old_spread_val-4
@@ -2803,7 +2808,9 @@ def this_week_page():
                         on_change=reset_lines
                     )    
 
-                    filtered_df = merged_predictions.loc[merged_predictions["matchup"]==matchup_options]  
+                    filtered_df = merged_predictions.loc[merged_predictions["matchup"]==matchup_options] 
+                    filtered_df["Book Home Moneyline"] = filtered_df["Book Home Moneyline"].fillna(0)
+                    filtered_df["Book Away Moneyline"] = filtered_df["Book Away Moneyline"].fillna(0) 
                     old_spread_val = filtered_df.iloc[0]["Book Home Spread"]
                     old_spread_upper = old_spread_val+4
                     old_spread_lower = old_spread_val-4
@@ -3435,7 +3442,7 @@ def bet_builder_page():
 
     # ---------- Available Games (left) ----------
     st.markdown("### Available Games")
-    st.write("Check 'Pick' and add to betslip")
+    st.write("Check 'Pick' to add to betslip")
 
     type_options = sorted(base_df["Type"].dropna().unique().tolist(), reverse=True)
     default_type = "Spread" if "Spread" in type_options else type_options[0]
@@ -3852,7 +3859,7 @@ def bet_builder_page():
     
     
 # Sidebar navigation
-st.sidebar.title("Navigation")
+st.sidebar.title("""Czar CFB""")
 page = st.sidebar.radio("Go to", ("This Week's Picks", "Betslip Builder", "The Czar Poll", "The Playoff", "Game Predictor", "Betting Accuracy", "About"))
 
 
