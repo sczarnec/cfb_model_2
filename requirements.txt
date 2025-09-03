@@ -1,4 +1,2 @@
 xgboost
-streamlit-js-eval
-random
-itertools
+streamlit_js_eval
