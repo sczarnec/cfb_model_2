@@ -1,3 +1,5 @@
+
+# for predicting book metrics for theoretical games
 book_function = function(oc_var, test_data){
   
   
@@ -133,7 +135,7 @@ book_function = function(oc_var, test_data){
 
 
 
-
+# for initial training on multiple years
 
 model_func = function(oc_var, data, yr_length, real_yr, real_wk, initial_yr, initial_wk, params, params_tune){
   
@@ -332,6 +334,7 @@ model_func = function(oc_var, data, yr_length, real_yr, real_wk, initial_yr, ini
 
 
 
+# for updating the model weekly
 
 model_func_single_year = function(oc_var, data, yr_length, real_yr, wk_range, params, params_tune){
   
@@ -416,7 +419,7 @@ model_func_single_year = function(oc_var, data, yr_length, real_yr, wk_range, pa
     
     
     
-    # take top 100 from each variable importance
+    # take top 100 from variable importance
     var_list_orig = unique(c(imp_mat_v1[1:200]$Feature))
     
     
@@ -488,8 +491,8 @@ model_func_single_year = function(oc_var, data, yr_length, real_yr, wk_range, pa
     
     if (wk == max(wk_range)){ 
       
-      xgb.save(model, fname = paste0("current_data/most_recent_",  oc_var,"_model.model"))
-      write.csv(var_list_final, paste0("current_data/most_recent_", oc_var, "model_var_list.csv"))
+      xgb.save(model, fname = paste0("most_recent_",  oc_var,"_model.model"))
+      write.csv(var_list_final, paste0("most_recent_", oc_var, "model_var_list.csv"))
       
     }       
     

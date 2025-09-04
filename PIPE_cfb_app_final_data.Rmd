@@ -26,6 +26,7 @@ library(cfbfastR)
 ```
 
 ```{r}
+# load in helper functions
 source("cfb_app_helpers.R")
 ```
 
@@ -99,7 +100,7 @@ model_prepped_orig = fbs_only %>%
          actual_over = ifelse(total_points>book_over_under,1,0))
 
 
-# | 
+
 
 
 ```
@@ -142,7 +143,7 @@ model_prepped_omit = model_prepped_moved
 
 # this week's matchups (save for app)
 model_prepped_this_week = model_prepped_omit %>% filter(season == current_season & week == current_week)
-write.csv(model_prepped_this_week, "current_data/model_prepped_this_week.csv")
+write.csv(model_prepped_this_week, "model_prepped_this_week.csv")
 
 
 
@@ -155,10 +156,6 @@ write.csv(model_prepped_this_week, "current_data/model_prepped_this_week.csv")
 ## Run Models
 
 ### Cover Probability
-
-```{r}
-source("cfb_app_helpers.R")
-```
 
 
 ```{r}
@@ -645,7 +642,7 @@ write.csv(winnings_calc, paste0("winnings_calc_saves/winnings_calc", current_sea
 ```{r}
 
 # bring in current winning calc
-winnings_calc_current = read.csv("current_data/winnings_calc_current.csv")[-1] %>% 
+winnings_calc_current = read.csv("winnings_calc_current.csv")[-1] %>% 
   filter(season != current_season & !(week %in% wk_range))
 
 # rbind this week's
@@ -657,7 +654,7 @@ winnings_calc_final = rbind(winnings_calc_current, winnings_calc)
 ```{r}
 
 # write out new winnings calc current
-write.csv(winnings_calc_final, "current_data/winnings_calc_current.csv")
+write.csv(winnings_calc_final, "winnings_calc_current.csv")
 
 ```
 
@@ -698,7 +695,7 @@ team_info = team_info %>%
   select(school, color, logo)
 
 # write truncated result out
-write.csv(team_info, "current_data/team_info.csv")
+write.csv(team_info, "team_info.csv")
 #team_info = read.csv("team_info.csv")[,-1]
 ```
 
@@ -706,7 +703,7 @@ write.csv(team_info, "current_data/team_info.csv")
 
 # current rankings (use AP until cfbp)
 current_rankings = (cfbd_rankings(year=current_season, week = current_week) %>% filter(poll == "AP Top 25") %>% select(school, rank))[1:12,]
-write.csv(current_rankings, "current_data/this_week_ranks.csv")
+write.csv(current_rankings, "this_week_ranks.csv")
 
 ```
 
@@ -870,8 +867,8 @@ theor_prepped_joined$t1_book_spread = book_spread_model
 ```{r}
 
 # load in most recent pd model info
-theor_model = xgb.load("current_data/most_recent_t1_win_model.model")
-theor_vars = read.csv("current_data/most_recent_t1_winmodel_var_list.csv")[,2]
+theor_model = xgb.load("most_recent_t1_win_model.model")
+theor_vars = read.csv("most_recent_t1_winmodel_var_list.csv")[,2]
 
 
 # create test matrix for theoretical games
@@ -981,10 +978,10 @@ theor_agg = pred_dat_final_theor %>% group_by(t1_team, t1_conference) %>% summar
 # write theoretical data out
 
 # aggregated for power rankings
-write.csv(theor_agg, "current_data/theoretical_agg.csv")
+write.csv(theor_agg, "theoretical_agg.csv")
 
 # prepped data for game predictor
-write.csv(pred_dat_final_theor, "current_data/theor_prepped.csv")
+write.csv(pred_dat_final_theor, "theor_prepped.csv")
 
 # save this weeks prankings to backup folder
 write.csv(theor_agg, paste0("prankings_saves/theor_agg_", current_season, current_week, ".csv"))
